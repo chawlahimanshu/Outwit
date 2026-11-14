@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OUTWIT — are you smarter?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0c1a33; --navy2:#13284a; --cyan:#4fe3ff; --pink:#ff4f8b; --yellow:#ffd84f;
+    --green:#4dff9a; --red:#ff5a6a; --ink:#e9f6ff; --muted:#8fb3cc;
+    --px:"Silkscreen",monospace; --mono:"Space Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%}
+  body{font-family:var(--mono); color:var(--ink); background:#0c1a33; overflow-x:hidden}
+  #scene{position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; image-rendering:crisp-edges; z-index:-2}
+  .scan{position:fixed; inset:0; z-index:-1; pointer-events:none;
+        background:repeating-linear-gradient(0deg, rgba(0,0,0,.07) 0 1px, transparent 1px 3px)}
+
+  .wrap{min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:5vh 14px 40px}
+  header{text-align:center; transition:all .3s}
+  .logo{font-family:var(--px); font-weight:700; font-size:clamp(46px,11vw,104px); letter-spacing:.06em; margin:0; line-height:1; color:#fff;
+        text-shadow:-4px 0 0 var(--pink), 4px 0 0 var(--cyan), 0 6px 0 rgba(0,0,0,.35); cursor:pointer; animation:glitch 5s infinite}
+  @keyframes glitch{0%,92%,100%{transform:none} 93%{transform:translateX(-3px) skewX(-6deg)} 95%{transform:translateX(3px)} 97%{transform:translateX(-1px)}}
+  .sub{font-family:var(--px); font-size:clamp(14px,2.6vw,22px); letter-spacing:.45em; color:var(--cyan); margin-top:14px;
+       text-shadow:2px 2px 0 rgba(0,0,0,.55)}
+  body.playing .logo{font-size:40px; animation:none}
+  body.playing .sub{display:none}
+  body.playing header{margin-bottom:6px}
+
+  main{width:100%; max-width:620px; margin-top:auto}
+  .pill{display:inline-block; background:rgba(8,18,38,.7); border:1px solid rgba(79,227,255,.35); padding:6px 12px; font-size:13px; letter-spacing:.12em; color:var(--ink)}
+  .center{text-align:center}
+  .muted{color:var(--muted)} .small{font-size:12px}
+
+  .frame{position:relative; background:rgba(10,22,46,.88); border:2px solid var(--cyan);
+         box-shadow:0 0 0 2px rgba(10,22,46,.9), 0 0 0 4px rgba(79,227,255,.35), 0 0 30px rgba(79,227,255,.25); padding:22px 20px; margin:18px 0 14px}
+  .frame .tab{position:absolute; top:-12px; left:16px; background:var(--cyan); color:#04131f; font-family:var(--px); font-size:11px; letter-spacing:.15em; padding:3px 8px}
+  .frame .tab.pink{background:var(--pink); color:#fff}
+
+  .rival-row{display:flex; align-items:center; gap:16px}
+  .rival-emoji{font-size:54px; line-height:1; filter:drop-shadow(3px 3px 0 rgba(0,0,0,.4))}
+  .rival-name{font-family:var(--px); font-size:clamp(20px,4.4vw,30px); letter-spacing:.08em; line-height:1.1}
+  .quip{color:var(--muted); font-size:14px; margin-top:6px}
+
+  button{font:inherit; color:inherit; cursor:pointer; border:none; background:none}
+  .big{display:block; width:100%; font-family:var(--px); font-size:clamp(18px,3.6vw,26px); letter-spacing:.3em; color:#fff;
+       background:var(--navy); border:3px solid var(--cyan); padding:18px 10px; box-shadow:0 0 0 3px var(--navy), 0 0 24px rgba(79,227,255,.45);
+       transition:background .15s, transform .05s}
+  .big:hover{background:var(--navy2)} .big:active{transform:translateY(2px)}
+  .big.pink{border-color:var(--pink); box-shadow:0 0 0 3px var(--navy), 0 0 24px rgba(255,79,139,.45)}
+  .row{display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap}
+  .row .grow{flex:1}
+  .mini{font-family:var(--px); font-size:12px; letter-spacing:.15em; padding:8px 12px; background:rgba(10,22,46,.85); border:1px solid rgba(79,227,255,.4); color:var(--ink)}
+  .mini:hover{border-color:var(--cyan); color:var(--cyan)}
+  .tagline{font-size:clamp(12px,2.2vw,15px); letter-spacing:.12em; margin:14px 0 0; text-shadow:1px 1px 0 rgba(0,0,0,.6)}
+  .cd{font-family:var(--px); color:var(--yellow); letter-spacing:.1em}
+
+  /* Game */
+  .hud{display:flex; justify-content:space-between; align-items:flex-end; font-family:var(--px); font-size:13px; letter-spacing:.15em; margin-bottom:12px}
+  .hud b{display:block; font-size:24px; color:var(--yellow)}
+  .pips{display:flex; gap:6px; margin-bottom:16px}
+  .pip{flex:1; height:10px; background:rgba(255,255,255,.12)}
+  .pip.cur{background:var(--yellow); animation:blink 1s steps(2) infinite} .pip.ok{background:var(--green)} .pip.no{background:var(--red)}
+  @keyframes blink{50%{opacity:.4}}
+  .timebar{display:flex; gap:3px; height:18px; margin-bottom:6px}
+  .timebar i{flex:1; background:var(--cyan)} .timebar i.off{background:rgba(255,255,255,.08)}
+  .timebar.mid i:not(.off){background:var(--yellow)} .timebar.low i:not(.off){background:var(--red)}
+  .secs{font-family:var(--px); font-size:13px; letter-spacing:.2em; text-align:right; color:var(--muted)}
+  .tries{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; min-height:0}
+  .tries .nope{width:100%; font-family:var(--px); font-size:12px; letter-spacing:.15em; color:var(--red)}
+  .tries .tried{font-size:13px; padding:3px 8px; background:rgba(255,90,106,.15); border:1px solid rgba(255,90,106,.45); color:#ffc2c8; text-decoration:line-through; text-transform:uppercase}
+  .secs.low{color:var(--red); animation:blink .5s steps(2) infinite}
+  .q{font-size:clamp(19px,3.6vw,24px); font-weight:700; line-height:1.35; margin:14px 0 18px}
+  .answer{display:flex; gap:8px}
+  .answer input{flex:1; min-width:0; font-family:var(--mono); font-size:20px; font-weight:700; color:#fff; background:#06101f;
+                border:2px solid rgba(79,227,255,.5); padding:14px; outline:none; text-transform:uppercase; letter-spacing:.05em}
+  .answer input:focus{border-color:var(--cyan); box-shadow:0 0 16px rgba(79,227,255,.35)}
+  .answer button{font-family:var(--px); font-size:16px; letter-spacing:.15em; padding:0 18px; background:var(--cyan); color:#04131f}
+  .pass{display:block; margin:12px 0 0 auto; font-family:var(--px); font-size:12px; letter-spacing:.2em; color:var(--muted)}
+  .pass:hover{color:var(--ink)}
+  .shake{animation:shake .3s}
+  @keyframes shake{25%,75%{transform:translateX(-6px)}50%{transform:translateX(6px)}}
+
+  .verdict{font-family:var(--px); font-size:clamp(24px,5vw,34px); letter-spacing:.12em}
+  .pts{font-family:var(--px); font-size:clamp(40px,9vw,64px); color:var(--yellow); text-shadow:3px 3px 0 #000; animation:pop .45s cubic-bezier(.2,1.7,.4,1)}
+  @keyframes pop{from{transform:scale(.2); opacity:0}}
+  .ans{font-size:18px; margin-top:6px} .ans b{color:var(--green)}
+
+  .final{font-family:var(--px); font-size:clamp(56px,13vw,96px); line-height:1; color:#fff; text-shadow:-3px 0 0 var(--pink), 3px 0 0 var(--cyan); margin:6px 0}
+  .rank{font-family:var(--px); font-size:clamp(16px,3.4vw,22px); letter-spacing:.12em; color:var(--yellow); margin:8px 0}
+  .vs{margin:16px 0 4px}
+  .vsrow{display:flex; align-items:center; gap:10px; margin:8px 0; font-size:13px}
+  .vsrow .n{width:110px; text-align:left; font-family:var(--px); letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .vsrow .bar{flex:1; height:14px; background:rgba(255,255,255,.08)}
+  .vsrow .bar i{display:block; height:100%; width:0; transition:width 1.2s steps(24)}
+  .vsrow .v{width:60px; text-align:right; font-family:var(--px)}
+  .bd{display:flex; gap:10px; padding:10px 0; border-top:1px dashed rgba(79,227,255,.25); font-size:13px}
+  .bd .q2{flex:1} .bd .q2 div:last-child{color:var(--muted); margin-top:3px}
+  .bd .p{font-family:var(--px); color:var(--yellow); white-space:nowrap}
+
+  .list-row{display:flex; align-items:center; gap:12px; padding:10px 6px; border-top:1px dashed rgba(79,227,255,.25); cursor:pointer}
+  .list-row:first-of-type{border-top:none}
+  .list-row:hover{background:rgba(79,227,255,.07)}
+  .list-row .e{font-size:28px} .list-row .t{flex:1} .list-row .t div:first-child{font-family:var(--px); letter-spacing:.06em}
+  .list-row .r{font-family:var(--px); font-size:13px}
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); text-align:center; gap:8px}
+  .stats b{display:block; font-family:var(--px); font-size:26px; color:var(--yellow)}
+  .stats span{font-size:11px; letter-spacing:.15em; color:var(--muted)}
+  h3{font-family:var(--px); letter-spacing:.2em; margin:0 0 10px; font-size:16px}
+
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--cyan); color:#04131f; font-family:var(--px); letter-spacing:.1em; padding:10px 16px; opacity:0; transition:opacity .2s; pointer-events:none}
+  .toast.show{opacity:1}
+  .fade{animation:fade .3s steps(6)}
+  @keyframes fade{from{opacity:0; transform:translateY(8px)}}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="scan"></div>
+<div class="wrap">
+  <header>
+    <h1 class="logo" id="logo">OUTWIT</h1>
+    <div class="sub">ARE YOU SMARTER?</div>
+  </header>
+  <main id="app"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== RIVALS + QUESTIONS =====================
+   One rival per day, 20 in rotation. Each question:
+   [question, displayAnswer, ...otherAcceptedAnswers]
+   Answers are checked forgivingly (case, punctuation, "the/a", small typos). */
+const RIVALS = [
+  {emoji:"🎒", name:"A 5th Grader", target:4600, quip:"Just aced a pop quiz. Feeling dangerous.", qs:[
+    ["What is 7 × 8?","56"],
+    ["Which planet is closest to the Sun?","Mercury"],
+    ["How many sides does a hexagon have?","6"],
+    ["What is the capital of Australia?","Canberra"],
+    ["Which gas do plants absorb that humans breathe out?","Carbon dioxide","CO2"],
+    ["What is the only even prime number?","2"],
+    ["What is the past tense of \"swim\"?","Swam"]]},
+  {emoji:"🐕", name:"A Golden Retriever", target:2900, quip:"Has never once been wrong about walk time.", qs:[
+    ["How many teeth does an adult dog typically have?","42"],
+    ["Which sense is strongest in dogs?","Smell","Sense of smell","Scent","Nose"],
+    ["Golden Retrievers were first bred in which country?","Scotland"],
+    ["Which sweet treat made from cacao is toxic to dogs?","Chocolate"],
+    ["What is a group of puppies born together called?","Litter"],
+    ["Which dog breed is known as the fastest?","Greyhound"],
+    ["Dogs sweat mainly through which part of their body?","Paw pads","Paws","Pads","Feet"]]},
+  {emoji:"🏴‍☠️", name:"A Pirate", target:3700, quip:"Knows the seven seas. Can't name them.", qs:[
+    ["On a ship, what is the opposite of \"port\"?","Starboard"],
+    ["What is the largest ocean on Earth?","Pacific","Pacific Ocean"],
+    ["What is the classic skull-and-crossbones pirate flag called?","Jolly Roger"],
+    ["What is the front of a ship called?","Bow","Prow"],
+    ["Which pirate's real name was Edward Teach?","Blackbeard"],
+    ["What unit is used to measure speed at sea?","Knots","Knot"],
+    ["Sailors ate citrus fruit to prevent which disease?","Scurvy"]]},
+  {emoji:"👵", name:"Your Grandma", target:5300, quip:"Has seen it all. Twice. Brought snacks.", qs:[
+    ["How many cups are in a quart?","4"],
+    ["What is the main ingredient in guacamole?","Avocado","Avocados"],
+    ["Which wedding anniversary is the \"golden\" one?","50th","50","Fiftieth"],
+    ["Meringue is made by whipping which part of an egg?","Egg whites","Whites","White","Egg white"],
+    ["Which herb is the star of traditional pesto?","Basil"],
+    ["In knitting, what stitch is the opposite of \"knit\"?","Purl"],
+    ["What kitchen tool is used to flatten dough?","Rolling pin"]]},
+  {emoji:"🎱", name:"A Magic 8-Ball", target:2100, quip:"\"Reply hazy. Try again.\"", qs:[
+    ["How many possible answers are inside a classic Magic 8-Ball?","20"],
+    ["On a standard die, what number is opposite the 1?","6"],
+    ["How many squares are on a chessboard?","64"],
+    ["How many legs does a spider have?","8"],
+    ["In pool, what color is the 8-ball?","Black"],
+    ["How many hearts does an octopus have?","3"],
+    ["How many sides does an octagon have?","8"]]},
+  {emoji:"🐦", name:"A Pigeon", target:2600, quip:"Gets around. Sees everything. Says nothing.", qs:[
+    ["Homing pigeons were famously used to carry what?","Messages","Message","Mail","Letters","Notes"],
+    ["What is a young pigeon called?","Squab"],
+    ["Which bird is the fastest animal on Earth in a dive?","Peregrine falcon","Peregrine","Falcon"],
+    ["What is the largest living bird?","Ostrich"],
+    ["Which is the only bird that can fly backwards?","Hummingbird","Hummingbirds"],
+    ["A group of crows is called a what?","Murder"],
+    ["Which London square was famous for its flocks of pigeons?","Trafalgar Square","Trafalgar"]]},
+  {emoji:"☕", name:"A Barista", target:3900, quip:"Spelled your name wrong. Still smug.", qs:[
+    ["What is espresso diluted with hot water called?","Americano"],
+    ["What dessert is espresso poured over ice cream?","Affogato"],
+    ["Which country produces the most coffee?","Brazil"],
+    ["The two main coffee species are Arabica and what?","Robusta"],
+    ["What does \"latte\" mean in Italian?","Milk"],
+    ["Espresso + steamed milk + thick foam is a what?","Cappuccino"],
+    ["What stimulant in coffee keeps you awake?","Caffeine"]]},
+  {emoji:"🚀", name:"An Astronaut", target:5600, quip:"Literally a rocket scientist. No pressure.", qs:[
+    ["Who was the first person to walk on the Moon?","Neil Armstrong","Armstrong"],
+    ["What is the largest planet in our solar system?","Jupiter"],
+    ["Sunlight takes about how many minutes to reach Earth?","8","8 minutes","Eight minutes"],
+    ["Which planet is called the Red Planet?","Mars"],
+    ["What is the closest star to Earth?","The Sun","Sun"],
+    ["Who was the first human in space?","Yuri Gagarin","Gagarin"],
+    ["Which planet has the most known moons?","Saturn"]]},
+  {emoji:"🧸", name:"A Toddler", target:1700, quip:"Just learned \"why\". Uses it constantly.", qs:[
+    ["What color do you get mixing red and blue paint?","Purple","Violet"],
+    ["What shape has exactly 3 sides?","Triangle"],
+    ["How many days are in a leap year?","366"],
+    ["What do caterpillars turn into?","Butterflies","Butterfly","Moths","Moth"],
+    ["What letter comes right after Q?","R"],
+    ["How many colors are in a traditional rainbow?","7"],
+    ["What color do you get mixing yellow and blue paint?","Green"]]},
+  {emoji:"🦴", name:"A Caveman", target:1900, quip:"Invented fire. Peaked early.", qs:[
+    ["Which \"Age\" came right before the Bronze Age?","Stone Age","Stone"],
+    ["What black volcanic glass did early humans use for blades?","Obsidian"],
+    ["Which hairy, tusked elephant relative lived alongside early humans?","Woolly mammoth","Mammoth","Wooly mammoth"],
+    ["What was the first animal humans domesticated?","Dog","Dogs","Wolf","Wolves"],
+    ["What is the scientific name for modern humans?","Homo sapiens"],
+    ["Which French cave is famous for its prehistoric paintings?","Lascaux"],
+    ["What big Ice Age cat had huge fangs?","Saber-toothed cat","Sabertooth","Saber-toothed tiger","Smilodon","Sabre-toothed cat","Sabre-toothed tiger"]]},
+  {emoji:"🤖", name:"A Robot Vacuum", target:3400, quip:"Mapped your whole house. Still hits the couch.", qs:[
+    ["What does CPU stand for?","Central Processing Unit"],
+    ["How many bits are in one byte?","8"],
+    ["Binary code uses 1 and which other digit?","0"],
+    ["Who co-founded Apple with Steve Jobs?","Steve Wozniak","Wozniak","Woz"],
+    ["What does \"www\" stand for?","World Wide Web"],
+    ["What is iRobot's famous robot vacuum called?","Roomba"],
+    ["Which company makes the Windows operating system?","Microsoft"]]},
+  {emoji:"📚", name:"A Librarian", target:5200, quip:"Shhh. Has read everything. Twice.", qs:[
+    ["Who wrote \"Pride and Prejudice\"?","Jane Austen","Austen"],
+    ["Who wrote the novel \"1984\"?","George Orwell","Orwell"],
+    ["How many lines are in a sonnet?","14"],
+    ["Which novel opens with \"Call me Ishmael\"?","Moby-Dick","Moby Dick"],
+    ["Who wrote \"Romeo and Juliet\"?","William Shakespeare","Shakespeare"],
+    ["The library system Melvil ____ invented is named after him.","Dewey"],
+    ["Who wrote the Harry Potter books?","J.K. Rowling","Rowling","JK Rowling"]]},
+  {emoji:"🐠", name:"A Goldfish", target:1200, quip:"Wait… what were we doing?", qs:[
+    ["What is the largest animal ever known to have lived?","Blue whale"],
+    ["What organs do fish use to breathe?","Gills"],
+    ["What is the deepest ocean trench on Earth?","Mariana Trench","Mariana","Marianas Trench"],
+    ["Goldfish are a type of which fish?","Carp"],
+    ["What is a baby fish called?","Fry"],
+    ["Roughly what percent of Earth's surface is water?","71","71%","70","70%"],
+    ["Which clownfish went missing in a famous 2003 animated film?","Nemo"]]},
+  {emoji:"👨‍🍳", name:"A Chef", target:4500, quip:"Yes, chef. No, you may not have ketchup.", qs:[
+    ["Pasta cooked \"firm to the bite\" is called what (Italian)?","Al dente"],
+    ["What is the main ingredient in hummus?","Chickpeas","Chickpea","Garbanzo beans","Garbanzo"],
+    ["The spice saffron comes from which flower?","Crocus"],
+    ["At sea level, water boils at how many degrees Celsius?","100"],
+    ["Which cheese tops a classic Margherita pizza?","Mozzarella"],
+    ["Cutting vegetables into thin matchsticks is called what?","Julienne"],
+    ["What Japanese dish is sliced raw fish served without rice?","Sashimi"]]},
+  {emoji:"🐈", name:"A Cat", target:3000, quip:"Knows every answer. Refuses to share.", qs:[
+    ["What is a group of cats called?","Clowder"],
+    ["What is the largest wild cat species?","Tiger"],
+    ["Which taste can cats NOT detect?","Sweet","Sweetness"],
+    ["Which ancient civilization famously worshipped cats?","Egypt","Egyptians","Ancient Egypt","Egyptian"],
+    ["What is the fastest land animal?","Cheetah"],
+    ["What is a baby cat called?","Kitten"],
+    ["What soft rumbling sound does a content cat make?","Purr","Purring"]]},
+  {emoji:"🧙", name:"A Wizard", target:4700, quip:"Turns lead into gold. Allegedly.", qs:[
+    ["What is the chemical symbol for gold?","Au"],
+    ["What is the chemical symbol for mercury?","Hg"],
+    ["Who is the wizard in the legend of King Arthur?","Merlin"],
+    ["What mythical animal is Scotland's national animal?","Unicorn"],
+    ["What is the most abundant gas in Earth's air?","Nitrogen"],
+    ["Which element has atomic number 1?","Hydrogen"],
+    ["Which mythical bird is reborn from its own ashes?","Phoenix"]]},
+  {emoji:"💪", name:"A Gym Bro", target:2800, quip:"Never skips leg day. Often skips reading.", qs:[
+    ["What is the largest muscle in the human body?","Gluteus maximus","Glutes","Glute","Gluteus"],
+    ["How many bones are in the adult human body?","206"],
+    ["Proteins are made of chains of what?","Amino acids","Amino acid"],
+    ["How many miles long is a marathon?","26.2"],
+    ["Sunlight helps your body make which vitamin?","Vitamin D","D"],
+    ["How many rings are on the Olympic flag?","5"],
+    ["What is the smallest bone in the human body (in the ear)?","Stapes","Stirrup"]]},
+  {emoji:"🗺️", name:"A Tourist", target:3600, quip:"Has 4,000 photos of airports.", qs:[
+    ["Machu Picchu is in which country?","Peru"],
+    ["What is the largest country by area?","Russia"],
+    ["What is the currency of Japan?","Yen"],
+    ["Which country gave the USA the Statue of Liberty?","France"],
+    ["What is the capital of Canada?","Ottawa"],
+    ["What is the smallest country in the world?","Vatican City","Vatican"],
+    ["The ancient rock city of Petra is in which country?","Jordan"]]},
+  {emoji:"⚔️", name:"A Medieval Knight", target:3500, quip:"Brave. Loyal. Mostly illiterate.", qs:[
+    ["In what year was the Magna Carta sealed?","1215"],
+    ["In what year was the Battle of Hastings?","1066"],
+    ["Joan of Arc fought for which country?","France"],
+    ["What is a water-filled ditch around a castle called?","Moat"],
+    ["The Black Death was spread by fleas living on which animal?","Rats","Rat"],
+    ["Which legendary king gathered knights at the Round Table?","King Arthur","Arthur"],
+    ["Who was the first Tudor king of England?","Henry VII","Henry 7","Henry the Seventh","Henry Tudor"]]},
+  {emoji:"🪴", name:"A Houseplant", target:1400, quip:"Has been sitting there, thinking. For years.", qs:[
+    ["What process do plants use to make food from sunlight?","Photosynthesis"],
+    ["What green pigment do plants use to capture light?","Chlorophyll"],
+    ["Which part of a plant absorbs most of its water?","Roots","Root"],
+    ["Which giant grass is one of the fastest-growing plants?","Bamboo"],
+    ["What do bees collect from flowers to make honey?","Nectar"],
+    ["What type of tree is the tallest in the world?","Redwood","Coast redwood","Redwoods","Sequoia"],
+    ["Which gas do plants release that we breathe?","Oxygen","O2"]]},
+];
+
+/* ===================== DAILY BACKGROUND SCENES =====================
+   One per rival (same order). sky: [top, horizon], gc: ground [top, bottom],
+   ground: water | grass | sand | floor | wood | felt | moon | tile | roof | rock
+   props: [emoji, x (0-1), size in pixels, y offset from horizon] */
+const SCENES = [
+  {sky:["#3f9fe4","#c4e9fc"], ground:"grass", gc:["#5cc75a","#2c6e35"], sun:"#fff3a0", props:[["🏫",.84,34],["🌳",.07,24],["✏️",.62,10]]},
+  {sky:["#57b9f0","#d4f1ff"], ground:"grass", gc:["#6ed162","#2e7a3a"], sun:"#fff3a0", props:[["🌳",.86,32],["🌳",.06,24],["🎾",.44,7],["🦴",.63,9]]},
+  {sky:["#ff6f5b","#ffd28a"], ground:"water", gc:["#1f6fa8","#081d36"], sun:"#fff1c4", props:[["🏝️",.85,32],["⛵",.62,14]]},
+  {sky:["#f59f62","#ffe5b8"], ground:"grass", gc:["#8bc34a","#46702a"], sun:"#fff6d0", props:[["🏡",.84,34],["🌻",.08,14],["🌻",.14,12]]},
+  {sky:["#14062e","#4a1c7a"], night:true, moon:true, ground:"felt", gc:["#0f6b3a","#052414"], props:[["🔮",.85,24],["🎲",.1,12],["🎲",.62,9]]},
+  {sky:["#74859b","#d3dbe4"], ground:"floor", gc:["#9aa3ad","#4d545d"], props:[["🏢",.86,40],["🏢",.06,32],["🍞",.62,8]]},
+  {sky:["#f7a98f","#fde7d4"], ground:"wood", gc:["#a0673f","#4a2a18"], sun:"#fff1d9", props:[["🏪",.85,32],["🥐",.1,12],["☕",.62,10]]},
+  {sky:["#02010d","#1a1446"], night:true, ground:"moon", gc:["#bdbdc7","#5c5c6a"], props:[["🌍",.83,28,-70],["🛰️",.1,14,-80],["🚩",.63,12]]},
+  {sky:["#ffaed0","#fff0f7"], ground:"grass", gc:["#9be38f","#4f9f52"], sun:"#fff7b0", props:[["🌈",.84,36,-36],["🎈",.09,14,-30],["🧱",.62,9]]},
+  {sky:["#d24d27","#ffb35c"], ground:"sand", gc:["#b07a45","#4f3017"], sun:"#ffe08a", props:[["🌋",.85,40],["🦣",.08,22],["🔥",.62,10]]},
+  {sky:["#03161d","#0f5866"], night:true, ground:"floor", gc:["#3b4a54","#141b20"], props:[["💻",.85,24],["🔌",.1,12],["🧦",.62,8]]},
+  {sky:["#2f1b4a","#b276a8"], ground:"wood", gc:["#8a5a34","#3a2216"], moon:true, props:[["🏛️",.85,34],["📖",.09,14],["🕯️",.62,10]]},
+  {sky:["#6fdcff","#d6fbff"], ground:"water", horizon:.42, gc:["#1aa3c9","#02304d"], sun:"#fffbd0", props:[["🐟",.82,12,34],["🐡",.66,10,60],["🪸",.08,22,80],["🫧",.9,8,90]]},
+  {sky:["#b83a28","#ff9e6b"], ground:"tile", gc:["#efe6d8","#a99c88"], props:[["🍝",.85,20],["🔥",.1,14],["🧄",.62,9]]},
+  {sky:["#0b1030","#2b2f6b"], night:true, moon:true, ground:"roof", gc:["#6a3434","#2a1414"], props:[["🏠",.86,30],["🧶",.62,10],["🐟",.1,10]]},
+  {sky:["#1a0638","#6a2fa0"], night:true, moon:true, ground:"rock", gc:["#4b4560","#1a1626"], props:[["🏰",.85,40],["✨",.1,12,-56],["🍄",.62,10]]},
+  {sky:["#1fa1ff","#bfeaff"], ground:"sand", gc:["#f2d38b","#bf9450"], sun:"#fff7a8", props:[["🌴",.87,36],["🏋️",.62,14],["🥤",.1,10]]},
+  {sky:["#3a9ae0","#e2f4ff"], ground:"grass", gc:["#7ccf6b","#367c3d"], sun:"#fff3a0", props:[["🗼",.86,44],["✈️",.14,14,-80],["🧳",.62,10]]},
+  {sky:["#808ca6","#e7d6c0"], ground:"grass", gc:["#6f9a52","#2e4724"], sun:"#fff0d0", props:[["🏰",.85,42],["🐉",.1,18,-66],["🛡️",.62,10]]},
+  {sky:["#9fd9ad","#f1fff0"], ground:"wood", gc:["#c9a27a","#6e4f33"], sun:"#fffbd8", props:[["🌿",.86,28],["🌼",.1,14],["💧",.62,8,-24]]},
+];
+
+const QPD = 7, SECONDS = 45, ARCHIVE_DAYS = 10;
+const MAX_PTS = 1000, BASE_PTS = 100;      // correct = 100 + up to 900 speed bonus
+const EPOCH = new Date(2026, 0, 1);         // Day #1 (local time)
+const STORE = "outwit-v2";
+
+/* ===================== DATES (local midnight) ===================== */
+const pad = n => String(n).padStart(2, "0");
+const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const dayNum = d => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - EPOCH) / 864e5) + 1;
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const fmtDate = d => d.toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"}).toUpperCase();
+const fmtNum = n => n.toLocaleString();
+
+function mulberry32(a){ return () => { a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function shuffle(arr, rnd){ const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function puzzleFor(date){
+  const n = dayNum(date);
+  const idx = ((n - 1) % RIVALS.length + RIVALS.length) % RIVALS.length;
+  const rival = RIVALS[idx];
+  const qs = shuffle(rival.qs, mulberry32(n * 2654435761)).slice(0, QPD)
+    .map(([q, ...answers]) => ({ q, answer: answers[0], accepted: answers }));
+  return { n, idx, key: keyOf(date), date, rival, qs };
+}
+
+/* ===================== ANSWER CHECKING ===================== */
+const NUMWORDS = {zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20};
+function norm(s){
+  s = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+       .replace(/&/g, " and ").replace(/(\d)\.(\d)/g, "$1DOT$2").replace(/[^a-z0-9 ]/g, " ")
+       .replace(/DOT/gi, ".").replace(/\s+/g, " ").trim()
+       .replace(/^(the|a|an) /, "");
+  s = s.split(" ").map(w => w in NUMWORDS ? String(NUMWORDS[w]) : w).join(" ");
+  return s.replace(/ /g, "");
+}
+function lev(a, b){
+  const d = Array.from({length:a.length+1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function isCorrect(guess, accepted){
+  const g = norm(guess); if (!g) return false;
+  return accepted.some(a => {
+    const t = norm(a);
+    if (g === t) return true;
+    if (/\d/.test(t)) return false;                              // numbers must be exact
+    const allow = t.length >= 8 ? 2 : t.length >= 4 ? 1 : 0;    // forgive small typos
+    return lev(g, t) <= allow;
+  });
+}
+
+/* ===================== STORAGE ===================== */
+let memStore = {};
+const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return JSON.parse(JSON.stringify(memStore)); } };
+const save = s => { memStore = s; try { localStorage.setItem(STORE, JSON.stringify(s)); } catch {} };
+const getRec = key => load()[key] || { answers: [] };
+const setRec = (key, rec) => { const s = load(); s[key] = rec; save(s); };
+const total = rec => rec.answers.reduce((t, a) => t + a.pts, 0);
+const done = rec => rec.answers.length === QPD;
+
+function stats(){
+  const s = load(); let played = 0, best = 0, sum = 0;
+  for (const k in s) if (done(s[k])) { played++; const t = total(s[k]); sum += t; best = Math.max(best, t); }
+  let streak = 0, d = new Date();
+  if (!(s[keyOf(d)] && done(s[keyOf(d)]))) d = addDays(d, -1);
+  while (s[keyOf(d)] && done(s[keyOf(d)])) { streak++; d = addDays(d, -1); }
+  return { played, best, avg: played ? Math.round(sum / played) : 0, streak };
+}
+
+function rankFor(score){
+  const r = score / (QPD * MAX_PTS);
+  if (r >= .85) return "CERTIFIED GENIUS";
+  if (r >= .70) return "BIG BRAIN ENERGY";
+  if (r >= .50) return "PRETTY SHARP";
+  if (r >= .30) return "GETTING THERE";
+  if (r > 0)    return "ROUGH DAY";
+  return "BRAIN OFFLINE";
+}
+
+/* ===================== PIXEL SCENE ENGINE ===================== */
+const cv = document.getElementById("scene"), g = cv.getContext("2d");
+let W = 320, H = 180, scene = null, sceneRival = null, sprites = {};
+
+function sizeCanvas(){
+  W = innerWidth < 700 ? 200 : 320;
+  H = Math.max(120, Math.round(W * innerHeight / innerWidth));
+  cv.width = W; cv.height = H; g.imageSmoothingEnabled = false;
+}
+addEventListener("resize", sizeCanvas);
+
+function hex(c){ const n = parseInt(c.slice(1), 16); return [n >> 16, n >> 8 & 255, n & 255]; }
+function mix(a, b, t){ const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`; }
+function shade(c, k){ const A = hex(c); return `rgb(${A.map(v => Math.max(0, Math.min(255, Math.round(v * k)))).join(",")})`; }
+
+/* Turn an emoji into a crisp little pixel sprite */
+function sprite(emoji, size){
+  const key = emoji + size; if (sprites[key]) return sprites[key];
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const x = c.getContext("2d");
+  x.font = `${Math.round(size * .86)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+  x.textAlign = "center"; x.textBaseline = "middle";
+  x.fillText(emoji, size / 2, size / 2 + size * .06);
+  try { const d = x.getImageData(0, 0, size, size); for (let i = 3; i < d.data.length; i += 4) d.data[i] = d.data[i] > 100 ? 255 : 0; x.putImageData(d, 0, 0); } catch {}
+  return sprites[key] = c;
+}
+
+function setScene(p){ scene = SCENES[p.idx]; sceneRival = p.rival.emoji; }
+
+function drawScene(t){
+  if (!scene) return;
+  const s = scene, rnd = mulberry32(42), hz = Math.round(H * (s.horizon || .6));
+  // sky in chunky bands
+  const bands = 12;
+  for (let i = 0; i < bands; i++){
+    g.fillStyle = mix(s.sky[0], s.sky[1], i / (bands - 1));
+    g.fillRect(0, Math.floor(hz * i / bands), W, Math.ceil(hz / bands) + 1);
+  }
+  // stars / sun / moon
+  if (s.night) for (let i = 0; i < 60; i++){
+    const x = rnd() * W | 0, y = rnd() * hz * .9 | 0, tw = Math.sin(t * 2 + i) > .6;
+    g.fillStyle = tw ? "#ffffff" : "rgba(255,255,255,.45)"; g.fillRect(x, y, 1, 1);
+  }
+  const bx = Math.round(W * .74), by = Math.round(hz * .28);
+  if (s.sun) disc(bx, by, 9, s.sun);
+  if (s.moon){ disc(bx, by, 8, "#f4f1d0"); disc(bx + 4, by - 2, 7, mix(s.sky[0], s.sky[1], .25)); }
+  // drifting clouds (daytime)
+  if (!s.night) for (let i = 0; i < 4; i++){
+    const w = 18 + (rnd() * 22 | 0), y = 6 + (rnd() * hz * .45 | 0), sp = 1.5 + rnd() * 2;
+    const x = ((rnd() * W + t * sp) % (W + w * 2)) - w;
+    cloud(Math.round(x), y, w);
+  }
+  ground(s, hz, t);
+  // props + today's rival
+  for (const [e, px, size, dy = 0] of s.props){
+    const bob = dy > 0 ? Math.round(Math.sin(t * 1.5 + px * 9) * 1.5) : dy < 0 ? Math.round(Math.sin(t + px * 5) * 2) : 0;
+    g.drawImage(sprite(e, size), Math.round(W * px - size / 2), hz - size + 1 + dy + bob);
+  }
+  const rs = W < 300 ? 24 : 30, rb = Math.round(Math.sin(t * 2.2) * (s.ground === "water" ? 2 : 1));
+  g.drawImage(sprite(sceneRival, rs), Math.round(W * .3 - rs / 2), hz - rs + 2 + rb);
+}
+function disc(cx, cy, r, col){ g.fillStyle = col; for (let y = -r; y <= r; y++){ const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(cx - w, cy + y, w * 2, 1); } }
+function cloud(x, y, w){
+  g.fillStyle = "rgba(255,255,255,.92)";
+  g.fillRect(x, y + 4, w, 4); g.fillRect(x + 3, y + 1, w * .45 | 0, 4); g.fillRect(x + (w * .45 | 0), y - 1, w * .35 | 0, 6);
+  g.fillStyle = "rgba(200,220,240,.8)"; g.fillRect(x + 1, y + 8, w - 2, 1);
+}
+function ground(s, hz, t){
+  const [a, b] = s.gc, gh = H - hz, rnd = mulberry32(7), bands = 8;
+  for (let i = 0; i < bands; i++){ g.fillStyle = mix(a, b, i / (bands - 1)); g.fillRect(0, hz + Math.floor(gh * i / bands), W, Math.ceil(gh / bands) + 1); }
+  switch (s.ground){
+    case "water":
+      g.fillStyle = shade(a, 1.35);
+      for (let x = 0; x < W; x++){ const y = hz + Math.round(Math.sin(x * .18 + t * 2) * 1); g.fillRect(x, y, 1, 1); }
+      for (let i = 0; i < 40; i++){
+        const y = hz + 4 + (rnd() * gh * .7 | 0), x = ((rnd() * W + t * (3 + rnd() * 4)) % W) | 0;
+        g.fillStyle = `rgba(255,255,255,${.12 + .25 * (1 - (y - hz) / gh)})`; g.fillRect(x, y, 2 + (rnd() * 4 | 0), 1);
+      }
+      break;
+    case "grass":
+      g.fillStyle = shade(a, 1.18); g.fillRect(0, hz, W, 2);
+      for (let i = 0; i < 70; i++){ const x = rnd() * W | 0, y = hz + 3 + (rnd() * gh | 0); g.fillStyle = shade(a, .8); g.fillRect(x, y, 1, 2); g.fillRect(x + 2, y + 1, 1, 1); }
+      break;
+    case "sand": case "rock": case "felt":
+      g.fillStyle = shade(a, 1.12); g.fillRect(0, hz, W, 1);
+      for (let i = 0; i < 90; i++){ g.fillStyle = shade(a, rnd() > .5 ? .82 : 1.1); g.fillRect(rnd() * W | 0, hz + 2 + (rnd() * gh | 0), s.ground === "rock" ? 2 : 1, 1); }
+      break;
+    case "moon":
+      for (let i = 0; i < 14; i++){ const x = rnd() * W | 0, y = hz + 4 + (rnd() * gh * .8 | 0), r = 2 + (rnd() * 4 | 0);
+        g.fillStyle = shade(a, .78); g.fillRect(x - r, y, r * 2, 2); g.fillStyle = shade(a, 1.1); g.fillRect(x - r, y + 2, r * 2, 1); }
+      break;
+    case "floor": case "wood":
+      for (let y = hz + 5, row = 0; y < H; y += 6, row++){
+        g.fillStyle = shade(a, .75); g.fillRect(0, y, W, 1);
+        if (s.ground === "wood") for (let x = (row % 2) * 20; x < W; x += 40) g.fillRect(x, y - 5, 1, 5);
+      }
+      break;
+    case "tile":
+      for (let y = hz, r = 0; y < H; y += 8, r++) for (let x = (r % 2) * 8; x < W; x += 16){ g.fillStyle = shade(a, .82); g.fillRect(x, y, 8, 8); }
+      break;
+    case "roof":
+      for (let y = hz + 3, r = 0; y < H; y += 5, r++){ g.fillStyle = shade(a, .7); g.fillRect(0, y, W, 1);
+        for (let x = (r % 2) * 5; x < W; x += 10) g.fillRect(x, y - 4, 1, 4); }
+      break;
+  }
+}
+let lastFrame = 0;
+function loop(now){
+  if (now - lastFrame > 80){ lastFrame = now; drawScene(now / 1000); }   // ~12fps for that pixel feel
+  requestAnimationFrame(loop);
+}
+
+/* ===================== UI ===================== */
+const app = document.getElementById("app");
+document.getElementById("logo").onclick = () => { if (!game) home(); };
+let game = null;
+let currentDayKey = keyOf(new Date());
+
+function render(html, playing){
+  document.body.classList.toggle("playing", !!playing);
+  app.innerHTML = `<div class="fade">${html}</div>`;
+}
+
+function home(){
+  stopTimer(); game = null;
+  const p = puzzleFor(new Date()), rec = getRec(p.key), fin = done(rec);
+  setScene(p);
+  render(`
+    <div class="center"><div class="tagline pill">7 QUESTIONS · ${SECONDS}S EACH · TYPE FAST, SCORE BIG</div></div>
+    <div class="frame">
+      <div class="tab">TODAY'S RIVAL · ${fmtDate(p.date)}</div>
+      <div class="rival-row">
+        <div class="rival-emoji">${p.rival.emoji}</div>
+        <div><div class="muted small" style="letter-spacing:.15em">ARE YOU SMARTER THAN…</div>
+          <div class="rival-name">${p.rival.name.toUpperCase()}?</div>
+          <div class="quip">${p.rival.quip}</div></div>
+      </div>
+      ${fin ? `<div class="row" style="margin-top:14px"><span class="muted small grow" style="letter-spacing:.15em">YOUR SCORE TODAY</span><span class="cd" style="font-size:24px">${fmtNum(total(rec))}</span></div>` : ""}
+    </div>
+    <button class="big" id="go">${fin ? "▶ SEE RESULTS ◀" : rec.answers.length ? "▼ RESUME ▼" : "▼ LET'S GO ▼"}</button>
+    <div class="row">
+      <span class="pill">OUTWIT #${p.n}</span>
+      <span class="grow"></span>
+      <button class="mini" id="arch">ARCHIVE ↺</button>
+      <button class="mini" id="stat">STATS ★</button>
+    </div>
+    <div class="center" style="margin-top:14px"><span class="pill">NEXT RIVAL IN <span class="cd" id="cd"></span></span></div>`);
+  document.getElementById("go").onclick = () => fin ? results(p) : start(p);
+  document.getElementById("arch").onclick = archive;
+  document.getElementById("stat").onclick = statsView;
+  tick();
+}
+
+function archive(){
+  let rows = "";
+  for (let i = 1; i <= ARCHIVE_DAYS; i++){
+    const ap = puzzleFor(addDays(new Date(), -i)), r = getRec(ap.key), f = done(r);
+    rows += `<div class="list-row" data-i="${i}"><div class="e">${ap.rival.emoji}</div>
+      <div class="t"><div>${ap.rival.name.toUpperCase()}</div><div class="muted small">#${ap.n} · ${fmtDate(ap.date)}</div></div>
+      <div class="r" style="color:${f ? "var(--yellow)" : "var(--cyan)"}">${f ? fmtNum(total(r)) : r.answers.length ? "RESUME ›" : "PLAY ›"}</div></div>`;
+  }
+  render(`<div class="frame"><div class="tab">ARCHIVE · LAST ${ARCHIVE_DAYS} DAYS</div>${rows}</div>
+          <button class="big" id="back">◀ BACK</button>`);
+  document.querySelectorAll(".list-row").forEach(row => row.onclick = () => {
+    const ap = puzzleFor(addDays(new Date(), -row.dataset.i));
+    setScene(ap);
+    done(getRec(ap.key)) ? results(ap) : start(ap);
+  });
+  document.getElementById("back").onclick = home;
+}
+
+function statsView(){
+  const st = stats();
+  render(`<div class="frame"><div class="tab">YOUR STATS</div>
+      <div class="stats">
+        <div><b>${st.played}</b><span>PLAYED</span></div>
+        <div><b>${fmtNum(st.best)}</b><span>BEST</span></div>
+        <div><b>${fmtNum(st.avg)}</b><span>AVERAGE</span></div>
+        <div><b>${st.streak}</b><span>STREAK</span></div>
+      </div>
+      <p class="muted small" style="margin:16px 0 0">Correct answers score ${BASE_PTS} + up to ${MAX_PTS - BASE_PTS} speed bonus. Max ${fmtNum(QPD * MAX_PTS)} per day.</p>
+    </div><button class="big" id="back">◀ BACK</button>`);
+  document.getElementById("back").onclick = home;
+}
+
+function start(p){
+  game = { p, i: getRec(p.key).answers.length, timerId: null };
+  setScene(p);
+  question();
+}
+
+function hud(p, rec){
+  const pips = p.qs.map((_, i) => { const a = rec.answers[i];
+    return `<div class="pip ${a ? (a.ok ? "ok" : "no") : i === game.i ? "cur" : ""}"></div>`; }).join("");
+  return `<div class="hud"><div>${p.rival.emoji} VS ${p.rival.name.replace(/^(A|An) /, "").toUpperCase()}<b>Q${Math.min(game.i + 1, QPD)}/${QPD}</b></div>
+      <div style="text-align:right">SCORE<b>${fmtNum(total(rec))}</b></div></div><div class="pips">${pips}</div>`;
+}
+
+const SEGS = 30;
+function question(){
+  const { p } = game, rec = getRec(p.key), item = p.qs[game.i];
+  if (!rec.cur || rec.cur.i !== game.i) { rec.cur = { i: game.i, startedAt: Date.now() }; setRec(p.key, rec); }
+  render(`
+    <div class="frame">
+      <div class="tab pink">QUESTION ${game.i + 1}</div>
+      ${hud(p, rec)}
+      <div class="timebar" id="bar">${"<i></i>".repeat(SEGS)}</div>
+      <div class="secs" id="secs"></div>
+      <div class="q">${item.q}</div>
+      <form class="answer" id="form" autocomplete="off">
+        <input id="guess" placeholder="TYPE YOUR ANSWER" autocapitalize="off" spellcheck="false" />
+        <button type="submit">GO</button>
+      </form>
+      <div class="tries" id="tries"></div>
+      <button class="pass" id="pass">PASS ›</button>
+    </div>`, true);
+
+  const input = document.getElementById("guess"), triesEl = document.getElementById("tries");
+  const showTries = () => {
+    const w = getRec(p.key).cur.wrong || [];
+    triesEl.innerHTML = w.length ? `<span class="nope">${w.length === 1 ? "NOPE — KEEP GUESSING!" : `NOPE ×${w.length} — KEEP GOING!`}</span>` +
+      w.map(x => `<span class="tried">✗ ${esc(x)}</span>`).join("") : "";
+  };
+  const shake = () => { input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake"); };
+  showTries();
+  input.focus();
+  document.getElementById("form").onsubmit = e => {
+    e.preventDefault();
+    const val = input.value.trim();
+    if (!val) return shake();
+    if (isCorrect(val, item.accepted)) return submit(val);
+    // Wrong: remember it, clear the box, and keep the clock running
+    const r = getRec(p.key);
+    r.cur.wrong = [...(r.cur.wrong || []), val];
+    setRec(p.key, r);
+    input.value = ""; shake(); showTries(); input.focus();
+  };
+  document.getElementById("pass").onclick = () => submit("");
+
+  const bar = document.getElementById("bar"), segs = [...bar.children], secs = document.getElementById("secs");
+  const startedAt = rec.cur.startedAt;
+  stopTimer();
+  const step = () => {
+    const left = Math.max(0, SECONDS - (Date.now() - startedAt) / 1000);
+    const on = Math.ceil(left / SECONDS * SEGS);
+    segs.forEach((s, i) => s.classList.toggle("off", i >= on));
+    bar.className = "timebar" + (left <= 10 ? " low" : left <= 20 ? " mid" : "");
+    secs.textContent = `${Math.ceil(left)}S LEFT`;
+    secs.classList.toggle("low", left <= 10);
+    if (left <= 0) submit(null);
+  };
+  game.timerId = setInterval(step, 100); step();
+}
+
+function stopTimer(){ if (game && game.timerId){ clearInterval(game.timerId); game.timerId = null; } }
+
+/* guess: typed text, "" = passed, null = time ran out */
+function submit(guess){
+  stopTimer();
+  const { p } = game, rec = getRec(p.key), item = p.qs[game.i];
+  if (rec.answers.length > game.i) return;
+  const left = Math.max(0, SECONDS - (Date.now() - rec.cur.startedAt) / 1000);
+  const ok = guess ? isCorrect(guess, item.accepted) : false;
+  const pts = ok ? Math.round(BASE_PTS + (MAX_PTS - BASE_PTS) * left / SECONDS) : 0;
+  const tries = (rec.cur && rec.cur.wrong) || [];
+  const how = ok ? "correct" : guess === "" ? "passed" : "timeout";
+  rec.answers.push({ ok, pts, how, guess: tries.join(", "), time: Math.round(SECONDS - left) });
+  delete rec.cur; setRec(p.key, rec);
+
+  const last = game.i === QPD - 1;
+  render(`
+    <div class="frame center">
+      <div class="tab ${ok ? "" : "pink"}">QUESTION ${game.i + 1}</div>
+      ${hud(p, rec)}
+      <div class="verdict" style="color:${ok ? "var(--green)" : "var(--red)"}">
+        ${ok ? (tries.length ? `GOT IT!` : "CORRECT!") : how === "passed" ? "PASSED" : "TIME'S UP!"}</div>
+      <div class="pts">+${fmtNum(pts)}</div>
+      ${ok ? `<div class="muted small">${Math.round(SECONDS - left)}S · SPEED BONUS +${fmtNum(pts - BASE_PTS)}</div>` : ""}
+      <div class="ans">ANSWER: <b>${item.answer}</b></div>
+      ${tries.length ? `<div class="muted small" style="margin-top:4px">${ok ? `After ${tries.length} wrong ${tries.length === 1 ? "guess" : "guesses"}: ` : "Your guesses: "}${esc(tries.join(", "))}</div>` : ""}
+    </div>
+    <button class="big" id="next">${last ? "▶ FINAL SCORE ◀" : "▼ NEXT QUESTION ▼"}</button>`, true);
+  const next = document.getElementById("next");
+  next.focus();
+  next.onclick = () => { game.i++; last ? results(p) : question(); };
+}
+
+const esc = s => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function results(p){
+  stopTimer(); game = null; setScene(p);
+  const rec = getRec(p.key), score = total(rec), right = rec.answers.filter(a => a.ok).length;
+  const max = QPD * MAX_PTS, rival = p.rival.target, isToday = p.key === keyOf(new Date());
+  const rname = p.rival.name.replace(/^(A|An) /, "");
+  const line = score > rival ? `You outwitted ${p.rival.name.toLowerCase()}.` : score === rival ? `Dead even with ${p.rival.name.toLowerCase()}.` : `${p.rival.name} scored higher today.`;
+
+  render(`
+    <div class="frame center">
+      <div class="tab">FINAL SCORE · #${p.n}</div>
+      <div class="final" id="final">0</div>
+      <div class="muted small" style="letter-spacing:.12em">OUT OF ${fmtNum(max)} · ${right}/${QPD} CORRECT</div>
+      <div class="rank">${rankFor(score)}</div>
+      <div class="muted">${line}</div>
+      <div class="vs">
+        <div class="vsrow"><span class="n">YOU</span><div class="bar"><i id="b1" style="background:var(--pink)"></i></div><span class="v">${fmtNum(score)}</span></div>
+        <div class="vsrow"><span class="n">${p.rival.emoji} ${rname.toUpperCase()}</span><div class="bar"><i id="b2" style="background:var(--cyan)"></i></div><span class="v">${fmtNum(rival)}</span></div>
+      </div>
+    </div>
+    <button class="big pink" id="share">SHARE SCORE</button>
+    <div class="row">
+      <button class="mini" id="back">◀ HOME</button><span class="grow"></span>
+      ${isToday ? `<span class="pill">NEXT RIVAL IN <span class="cd" id="cd"></span></span>` : ""}
+    </div>
+    <div class="frame"><div class="tab">BREAKDOWN</div>
+      ${rec.answers.map((a, i) => `<div class="bd"><div>${a.ok ? "✅" : "❌"}</div>
+        <div class="q2"><div>${p.qs[i].q}</div><div>${p.qs[i].answer}${a.ok ? ` · ${a.time}s` : a.how === "passed" ? " · passed" : " · time ran out"}${a.guess ? ` · tried “${esc(a.guess)}”` : ""}</div></div>
+        <div class="p">${a.pts ? "+" + fmtNum(a.pts) : "0"}</div></div>`).join("")}
+    </div>`);
+
+  const el = document.getElementById("final"), t0 = performance.now();
+  const anim = now => { const k = Math.min(1, (now - t0) / 1200), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmtNum(Math.round(score * e)); if (k < 1) requestAnimationFrame(anim); };
+  requestAnimationFrame(anim);
+  setTimeout(() => {
+    document.getElementById("b1").style.width = (score / max * 100) + "%";
+    document.getElementById("b2").style.width = (rival / max * 100) + "%";
+  }, 60);
+
+  document.getElementById("back").onclick = home;
+  document.getElementById("share").onclick = () => {
+    const grid = rec.answers.map(a => !a.ok ? "🟥" : a.pts >= 700 ? "🟩" : "🟨").join("");
+    const txt = `OUTWIT #${p.n} ${p.rival.emoji} vs ${p.rival.name}\n${fmtNum(score)} pts (${right}/${QPD}) — ${rankFor(score)}\n${grid}`;
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject())
+      .then(() => toast("COPIED!")).catch(() => toast("COPY BLOCKED — SCREENSHOT IT!"));
+  };
+  tick();
+}
+
+function toast(msg){ const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+
+/* ===================== MIDNIGHT REFRESH ===================== */
+function tick(){
+  const now = new Date(), cd = document.getElementById("cd");
+  if (cd){ const ms = addDays(now, 1) - now;
+    cd.textContent = `${pad(Math.floor(ms / 3.6e6))}:${pad(Math.floor(ms % 3.6e6 / 6e4))}:${pad(Math.floor(ms % 6e4 / 1000))}`; }
+  const k = keyOf(now);
+  if (k !== currentDayKey){ currentDayKey = k; if (!game) home(); }   // new rival + new scene at 12:00 AM
+}
+setInterval(tick, 1000);
+
+sizeCanvas();
+home();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -111,6 +111,59 @@
   .stats span{font-size:11px; letter-spacing:.15em; color:var(--muted)}
   h3{font-family:var(--px); letter-spacing:.2em; margin:0 0 10px; font-size:16px}
 
+  .ride{margin-top:14px; padding-top:12px; border-top:1px dashed rgba(79,227,255,.25); font-family:var(--px); font-size:11px; letter-spacing:.15em; color:var(--yellow)}
+  .ride span{font-size:18px; vertical-align:middle; margin-right:6px}
+
+  .bellbox{margin-top:18px; text-align:left}
+  .bell-head{display:flex; justify-content:space-between; align-items:baseline; font-family:var(--px); font-size:11px; letter-spacing:.12em; color:var(--muted); margin-bottom:8px}
+  .bell-head b{color:var(--yellow); font-size:14px}
+  .bell{position:relative; display:flex; align-items:flex-end; gap:2px; height:96px; padding-top:20px; border-bottom:2px solid rgba(79,227,255,.4)}
+  .bell i{flex:1; height:0; background:rgba(79,227,255,.35); transition:height .4s steps(6)}
+  .bell i.below{background:rgba(255,79,139,.75)}
+  .bell i.you{background:var(--yellow); box-shadow:0 0 10px var(--yellow)}
+  .bell .mark{position:absolute; transform:translateX(-50%); font-family:var(--px); font-size:10px; white-space:nowrap}
+  .bell .mark.you{top:0; color:var(--yellow)}
+  .bell .mark.riv{bottom:-22px; font-size:13px}
+  .bell-axis{display:flex; justify-content:space-between; font-family:var(--px); font-size:10px; color:var(--muted); margin-top:22px}
+
+  .mute{position:fixed; top:12px; right:12px; z-index:5; width:42px; height:42px; font-size:18px; background:rgba(10,22,46,.85); border:1px solid rgba(79,227,255,.5)}
+
+  html,body{-webkit-tap-highlight-color:transparent}
+  button{touch-action:manipulation}
+  .wrap{min-height:100dvh; padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+
+  /* ---------- phones ---------- */
+  @media (max-width:600px){
+    .wrap{padding:4vh 10px calc(20px + env(safe-area-inset-bottom))}
+    .logo{font-size:clamp(40px,13vw,60px); text-shadow:-3px 0 0 var(--pink), 3px 0 0 var(--cyan), 0 4px 0 rgba(0,0,0,.35)}
+    .sub{font-size:13px; letter-spacing:.35em; margin-top:10px}
+    .tagline{font-size:10px; letter-spacing:.06em; padding:6px 10px}
+    .frame{padding:18px 14px 16px; margin:16px 0 10px}
+    .rival-row{gap:12px} .rival-emoji{font-size:44px}
+    .rival-name{font-size:21px}
+    .quip{font-size:13px}
+    .big{padding:15px 8px; letter-spacing:.18em; font-size:18px}
+    .row .grow{display:none}
+    .row .mini{flex:1; padding:11px 6px}
+    .row .pill{flex-basis:100%; text-align:center}
+    .hud{font-size:11px} .hud b{font-size:20px}
+    .pips{margin-bottom:12px}
+    .timebar{height:14px; gap:2px}
+    .q{font-size:19px; margin:10px 0 14px}
+    .answer input{font-size:18px; padding:12px}
+    .answer button{padding:0 14px; font-size:15px}
+    .pass{padding:10px 0 2px}
+    .pts{font-size:46px}
+    .final{font-size:60px}
+    .vsrow .n{width:84px; font-size:11px}
+    .stats b{font-size:20px}
+    .bd{font-size:12px}
+    /* while playing/typing: shrink the title and pin the panel to the top so the keyboard never covers it */
+    body.playing .logo{font-size:24px; text-shadow:-2px 0 0 var(--pink), 2px 0 0 var(--cyan)}
+    body.pin-top .wrap{padding-top:10px}
+    body.pin-top main{margin-top:8px}
+    .mute{top:8px; right:8px; width:36px; height:36px; font-size:15px}
+  }
   .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--cyan); color:#04131f; font-family:var(--px); letter-spacing:.1em; padding:10px 16px; opacity:0; transition:opacity .2s; pointer-events:none}
   .toast.show{opacity:1}
   .fade{animation:fade .3s steps(6)}
@@ -128,6 +181,7 @@
   <main id="app"></main>
 </div>
 <div class="toast" id="toast"></div>
+<button class="mute" id="mute" aria-label="Toggle sound"></button>
 
 <script>
 /* ===================== RIVALS + QUESTIONS =====================
@@ -432,46 +486,223 @@ function sprite(emoji, size){
   return sprites[key] = c;
 }
 
-function setScene(p){ scene = SCENES[p.idx]; sceneRival = p.rival.emoji; }
+function setScene(p){
+  if (scene !== SCENES[p.idx]){ anim.alt = 0; anim.cam = 0; anim.parts = []; skyKey = ""; }
+  scene = SCENES[p.idx]; sceneIdx = p.idx; sceneRival = p.rival.emoji;
+}
+
+/* ===================== THE DAILY RIDE (climb animation) =====================
+   Your score is your altitude: every point lifts you higher, through the clouds
+   and into space, racing toward a flag at your rival's score.
+   Each rival's day has its own ride and trail (same order as RIVALS). */
+const VEHICLES = [
+  {name:"Kite",                 emoji:"🪁", trail:"string"},
+  {name:"Frisbee",              emoji:"🥏", trail:"sparkle", colors:["#ffd84f","#ffffff"]},
+  {name:"Pirate Airship",       balloon:["#1b1b1b","#d7263d"], trail:"flame"},
+  {name:"Grandma's Balloon",    balloon:["#ffb3d1","#c7b8ff"], trail:"flame"},
+  {name:"Crystal Ball",         emoji:"🔮", trail:"sparkle", colors:["#c58bff","#4fe3ff"]},
+  {name:"Dove",                 emoji:"🕊️", trail:"feather"},
+  {name:"Flying Mug",           emoji:"☕", trail:"smoke"},
+  {name:"Rocket",               emoji:"🚀", trail:"flame"},
+  {name:"Party Balloon",        emoji:"🎈", trail:"string"},
+  {name:"Mammoth-Hide Balloon", balloon:["#8a5a34","#d9b27c"], trail:"flame"},
+  {name:"UFO",                  emoji:"🛸", trail:"sparkle", colors:["#4dff9a","#4fe3ff"]},
+  {name:"Flying Book",          emoji:"📖", trail:"sparkle", colors:["#fff3c4","#ffd84f"]},
+  {name:"Bubble",               emoji:"🫧", trail:"bubbles"},
+  {name:"Chef's Balloon",       balloon:["#ffffff","#e63946"], trail:"flame"},
+  {name:"Yarn Ball",            emoji:"🧶", trail:"string"},
+  {name:"Broomstick",           emoji:"🧹", trail:"sparkle", colors:["#ffd84f","#c58bff","#ffffff"]},
+  {name:"Protein Shake Rocket", emoji:"🥤", trail:"flame"},
+  {name:"Jet",                  emoji:"✈️", trail:"smoke"},
+  {name:"Dragon",               emoji:"🐉", trail:"flame"},
+  {name:"Beanstalk",            emoji:"🌱", trail:"vine"},
+];
+let sceneIdx = 0, skyKey = "", skyStars = [], skyClouds = [];
+const anim = { mode:"ground", score:0, flag:null, alt:0, cam:0, flame:0, shake:0, celebrate:false, celebrated:false, parts:[] };
+const LIFT = 22, SPACE = "#070418";
+const altRange = () => H * 3;
+const altFor = score => LIFT + score / (QPD * MAX_PTS) * altRange();
+
+/* Called by the game: where the ride should be */
+function fly(score, flight, flag){
+  if (flight && anim.mode === "ground"){            // liftoff!
+    anim.flame = 1;
+    for (let i = 0; i < 18; i++) anim.parts.push({type:"dust", x:W*.5 + (Math.random()-.5)*16, h:1, vx:(Math.random()-.5)*1.2, vh:Math.random()*.4, life:20, max:20});
+  }
+  anim.mode = flight ? "flight" : "ground";
+  anim.score = score; anim.flag = flight && flag != null ? flag : null;
+  if (!flight){ anim.celebrate = false; }
+}
+function boost(){ anim.flame = 1; }
+function wobble(){ anim.shake = 1; }
+function celebrateIf(win){ anim.celebrate = win; anim.celebrated = false; }
+
+function buildSky(hz){
+  const r = mulberry32(99), top = hz + altRange() + H;
+  skyStars = Array.from({length:260}, () => ({x:r()*W|0, h:hz*.1 + r()*top, p:r()*6}));
+  skyClouds = Array.from({length:24}, () => ({x:r()*W, h:hz*.35 + r()*altRange()*.75, w:16 + (r()*24|0), sp:1 + r()*2.5}));
+}
+
+function emit(v, x, h){
+  const R = Math.random, P = o => { const p = Object.assign({x, h, vx:0, vh:0, life:20}, o); p.max = p.life; anim.parts.push(p); };
+  switch (v.trail){
+    case "flame":   P({type:"flame", vx:(R()-.5)*.5, vh:-.9-R()*.6, life:12+R()*8|0}); break;
+    case "smoke":   P({type:"smoke", vx:(R()-.5)*.3, vh:-.35, life:26}); break;
+    case "sparkle": P({type:"sparkle", x:x+(R()-.5)*12, h:h+R()*8, vx:(R()-.5)*.4, vh:-.25-R()*.3, life:20, color:v.colors[R()*v.colors.length|0]}); break;
+    case "feather": P({type:"feather", x:x+(R()-.5)*8, vx:(R()-.5)*.5, vh:-.3, life:44}); break;
+    case "bubbles": P({type:"bubble", x:x+(R()-.5)*10, vx:(R()-.5)*.2, vh:-.45, life:30}); break;
+  }
+}
+
+function update(t, hz){
+  const v = VEHICLES[sceneIdx];
+  const target = anim.mode === "flight" ? altFor(anim.score) : 0;
+  const diff = target - anim.alt;
+  anim.alt = Math.abs(diff) < .3 ? target : anim.alt + diff * .06;
+  // where the ride sits on screen: lower on phones while the question panel is pinned to the top
+  const anchor = document.body.classList.contains("pin-top") && innerWidth <= 600 ? .78 : .34;
+  const camT = anim.mode === "flight" ? Math.max(0, anim.alt + 16 - hz + H * anchor) : 0;
+  anim.cam += (camT - anim.cam) * .08;
+  anim.flame *= .93; anim.shake *= .85;
+
+  // trail particles
+  const rising = diff > 1.5;
+  const rate = rising ? 2 : anim.mode === "flight" ? .35 : .05;
+  for (let n = rate; n > 0; n--) if (Math.random() < n) emit(v, W * .5, anim.alt + 2);
+  if (anim.flame > .3 && v.trail === "flame") emit(v, W * .5, anim.alt + 2);
+
+  // confetti when you pass the rival's flag
+  if (anim.celebrate && !anim.celebrated && anim.flag != null && anim.alt >= altFor(anim.flag)){
+    anim.celebrated = true;
+    const cols = ["#ff4f8b","#4fe3ff","#ffd84f","#4dff9a","#ffffff"];
+    for (let i = 0; i < 80; i++) anim.parts.push({type:"confetti", x:Math.random()*W, h:altFor(anim.flag) + Math.random()*10,
+      vx:(Math.random()-.5)*1.4, vh:.6 + Math.random()*1.6, life:60, max:60, color:cols[i % cols.length]});
+  }
+  for (const p of anim.parts){
+    p.x += p.vx; p.h += p.vh; p.life--;
+    if (p.type === "confetti") p.vh -= .06;
+    if (p.type === "feather") p.vx = Math.sin(p.life * .3) * .4;
+  }
+  anim.parts = anim.parts.filter(p => p.life > 0).slice(-400);
+}
 
 function drawScene(t){
   if (!scene) return;
-  const s = scene, rnd = mulberry32(42), hz = Math.round(H * (s.horizon || .6));
-  // sky in chunky bands
-  const bands = 12;
-  for (let i = 0; i < bands; i++){
-    g.fillStyle = mix(s.sky[0], s.sky[1], i / (bands - 1));
-    g.fillRect(0, Math.floor(hz * i / bands), W, Math.ceil(hz / bands) + 1);
+  const s = scene, hz = Math.round(H * (s.horizon || .6)), ALT = altRange();
+  const key = `${W}x${H}:${sceneIdx}`;
+  if (key !== skyKey){ skyKey = key; buildSky(hz); }
+  update(t, hz);
+  const cam = Math.round(anim.cam), Y = h => Math.round(hz - h + cam);   // world height -> screen y
+
+  // sky: scene colors near the ground, fading to deep space as you climb
+  const bandH = Math.max(2, Math.round(hz / 12));
+  for (let y = 0; y < H; y += 2){
+    const h = Math.floor((hz - y + cam) / bandH) * bandH;
+    g.fillStyle = h <= hz ? mix(s.sky[1], s.sky[0], Math.max(0, h) / hz) : mix(s.sky[0], SPACE, Math.min(1, (h - hz) / (ALT * .7)));
+    g.fillRect(0, y, W, 2);
   }
-  // stars / sun / moon
-  if (s.night) for (let i = 0; i < 60; i++){
-    const x = rnd() * W | 0, y = rnd() * hz * .9 | 0, tw = Math.sin(t * 2 + i) > .6;
-    g.fillStyle = tw ? "#ffffff" : "rgba(255,255,255,.45)"; g.fillRect(x, y, 1, 1);
+  for (const st of skyStars){
+    const y = Y(st.h); if (y < 0 || y > H) continue;
+    const a = s.night ? 1 : Math.max(0, Math.min(1, (st.h - hz) / (ALT * .35)));
+    if (a < .05) continue;
+    g.fillStyle = `rgba(255,255,255,${a * (Math.sin(t * 2 + st.p) > .5 ? 1 : .45)})`; g.fillRect(st.x, y, 1, 1);
   }
+  if (!s.night) for (const c of skyClouds){
+    const y = Y(c.h); if (y < -12 || y > H) continue;
+    cloud(Math.round(((c.x + t * c.sp) % (W + c.w * 2)) - c.w), y, c.w);
+  }
+
+  // the ground world (scrolls down as you rise)
+  g.save(); g.translate(0, cam);
   const bx = Math.round(W * .74), by = Math.round(hz * .28);
   if (s.sun) disc(bx, by, 9, s.sun);
   if (s.moon){ disc(bx, by, 8, "#f4f1d0"); disc(bx + 4, by - 2, 7, mix(s.sky[0], s.sky[1], .25)); }
-  // drifting clouds (daytime)
-  if (!s.night) for (let i = 0; i < 4; i++){
-    const w = 18 + (rnd() * 22 | 0), y = 6 + (rnd() * hz * .45 | 0), sp = 1.5 + rnd() * 2;
-    const x = ((rnd() * W + t * sp) % (W + w * 2)) - w;
-    cloud(Math.round(x), y, w);
-  }
   ground(s, hz, t);
-  // props + today's rival
   for (const [e, px, size, dy = 0] of s.props){
     const bob = dy > 0 ? Math.round(Math.sin(t * 1.5 + px * 9) * 1.5) : dy < 0 ? Math.round(Math.sin(t + px * 5) * 2) : 0;
     g.drawImage(sprite(e, size), Math.round(W * px - size / 2), hz - size + 1 + dy + bob);
   }
   const rs = W < 300 ? 24 : 30, rb = Math.round(Math.sin(t * 2.2) * (s.ground === "water" ? 2 : 1));
   g.drawImage(sprite(sceneRival, rs), Math.round(W * .3 - rs / 2), hz - rs + 2 + rb);
+  g.restore();
+
+  // rival's flag line
+  if (anim.flag != null){
+    const fy = Y(altFor(anim.flag));
+    if (fy > -10 && fy < H + 10){
+      g.fillStyle = "rgba(255,79,139,.9)"; for (let x = 0; x < W; x += 6) g.fillRect(x, fy, 3, 1);
+      g.fillStyle = "#e9f6ff"; g.fillRect(6, fy - 12, 1, 12);
+      g.fillStyle = "#ff4f8b"; for (let i = 0; i < 5; i++) g.fillRect(7, fy - 12 + i, 6 - i, 1), g.fillRect(7, fy - 12 + 9 - i, 6 - i, 1);
+      g.drawImage(sprite(sceneRival, 12), 15, fy - 13);
+      g.font = "8px Silkscreen, monospace"; g.textBaseline = "bottom"; g.textAlign = "right";
+      g.fillStyle = "rgba(0,0,0,.5)"; g.fillText(fmtNum(anim.flag), W - 3, fy - 1);
+      g.fillStyle = "#ffffff"; g.fillText(fmtNum(anim.flag), W - 4, fy - 2);
+    }
+  }
+
+  // the ride
+  const v = VEHICLES[sceneIdx];
+  const vx = Math.round(W * .5 + Math.sin(t * 1.3) * (anim.mode === "flight" ? 3 : 0) + (Math.random() - .5) * anim.shake * 6);
+  const vy = Y(anim.alt);
+  if ((v.trail === "string" || v.trail === "vine") && anim.alt > 2) tether(v.trail, vx, vy, Math.round(W * .44), Y(0), t);
+  for (const p of anim.parts) drawPart(p, Y(p.h));
+  if (v.balloon) drawBalloon(vx, vy, v.balloon, t);
+  else { const vs = W < 300 ? 16 : 20; g.drawImage(sprite(v.emoji, vs), vx - vs / 2, vy - vs + 1); }
 }
+
+function tether(kind, x1, y1, x2, y2, t){
+  const n = Math.max(2, Math.ceil(Math.abs(y2 - y1) / 2));
+  for (let i = 0; i <= n; i++){
+    const k = i / n, x = Math.round(x1 + (x2 - x1) * k + Math.sin(i * .35 + t * 3) * (kind === "vine" ? 1 : 2) * (1 - k)), y = Math.round(y1 + (y2 - y1) * k);
+    if (y < -4 || y > H + 4) continue;
+    if (kind === "vine"){
+      g.fillStyle = "#2f8f3e"; g.fillRect(x - 1, y, 2, 2);
+      if (i % 6 === 0){ g.fillStyle = "#6ee06e"; g.fillRect((i / 6) % 2 ? x + 1 : x - 4, y, 3, 2); }
+    } else { g.fillStyle = "rgba(255,255,255,.85)"; g.fillRect(x, y, 1, 1); }
+  }
+}
+
+function drawPart(p, y){
+  const k = p.life / p.max; if (y < -6 || y > H + 6) return;
+  const x = Math.round(p.x);
+  switch (p.type){
+    case "flame":   g.fillStyle = k > .66 ? "#fff3a0" : k > .33 ? "#ffb627" : "#ff5a3d"; g.fillRect(x - 1, y, 2, 2); break;
+    case "smoke":  { const s = Math.round(1 + (1 - k) * 4); g.fillStyle = `rgba(240,240,255,${k * .7})`; g.fillRect(x - (s >> 1), y - (s >> 1), s, s); break; }
+    case "sparkle": if (p.life % 4 < 2){ g.fillStyle = p.color; g.fillRect(x, y, 1, 1); if (k > .6){ g.fillRect(x - 1, y, 3, 1); g.fillRect(x, y - 1, 1, 3); } } break;
+    case "feather": g.fillStyle = `rgba(255,255,255,${k})`; g.fillRect(x, y, 2, 1); break;
+    case "bubble":  g.fillStyle = `rgba(210,245,255,${k})`; g.fillRect(x - 1, y, 1, 1); g.fillRect(x + 1, y, 1, 1); g.fillRect(x, y - 1, 1, 1); g.fillRect(x, y + 1, 1, 1); break;
+    case "confetti": g.fillStyle = p.color; g.fillRect(x, y, 2, 2); break;
+    case "dust":    g.fillStyle = `rgba(210,200,180,${k * .8})`; g.fillRect(x - 1, y - 1, 3, 2); break;
+  }
+}
+
+function drawBalloon(x, y, cols, t){
+  const r = W < 300 ? 8 : 10, cy = y - 4 - 5 - r;          // basket 4, ropes 5
+  const band = r / 2.5;
+  for (let dy = -r; dy <= r; dy++){
+    const w = Math.round(Math.sqrt(r * r - dy * dy));
+    for (let dx = -w; dx < w; dx++){ g.fillStyle = Math.floor((dx + r) / band) % 2 ? cols[1] : cols[0]; g.fillRect(x + dx, cy + dy, 1, 1); }
+  }
+  for (let i = 1; i <= 3; i++){                              // tapered bottom
+    const w = Math.round(r * .7 - i * 1.4);
+    for (let dx = -w; dx < w; dx++){ g.fillStyle = Math.floor((dx + r) / band) % 2 ? cols[1] : cols[0]; g.fillRect(x + dx, cy + r + i, 1, 1); }
+  }
+  g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(x - Math.round(r * .55), cy - Math.round(r * .4), 1, Math.round(r * .7));
+  g.fillStyle = "#3a2a1a"; g.fillRect(x - 3, y - 9, 1, 5); g.fillRect(x + 2, y - 9, 1, 5);
+  if (anim.flame > .15 || anim.mode === "flight"){
+    g.fillStyle = anim.flame > .15 ? "#ffd84f" : "#ff8a3d"; g.fillRect(x - 1, y - 8, 2, 2 + ((t * 20 | 0) % 2) + (anim.flame > .5 ? 2 : 0));
+  }
+  g.fillStyle = "#8b5a2b"; g.fillRect(x - 3, y - 4, 6, 4);
+  g.fillStyle = "#5e3a1a"; g.fillRect(x - 3, y - 2, 6, 1);
+}
+
 function disc(cx, cy, r, col){ g.fillStyle = col; for (let y = -r; y <= r; y++){ const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(cx - w, cy + y, w * 2, 1); } }
 function cloud(x, y, w){
   g.fillStyle = "rgba(255,255,255,.92)";
   g.fillRect(x, y + 4, w, 4); g.fillRect(x + 3, y + 1, w * .45 | 0, 4); g.fillRect(x + (w * .45 | 0), y - 1, w * .35 | 0, 6);
   g.fillStyle = "rgba(200,220,240,.8)"; g.fillRect(x + 1, y + 8, w - 2, 1);
 }
+
 function ground(s, hz, t){
   const [a, b] = s.gc, gh = H - hz, rnd = mulberry32(7), bands = 8;
   for (let i = 0; i < bands; i++){ g.fillStyle = mix(a, b, i / (bands - 1)); g.fillRect(0, hz + Math.floor(gh * i / bands), W, Math.ceil(gh / bands) + 1); }
@@ -513,7 +744,7 @@ function ground(s, hz, t){
 }
 let lastFrame = 0;
 function loop(now){
-  if (now - lastFrame > 80){ lastFrame = now; drawScene(now / 1000); }   // ~12fps for that pixel feel
+  if (now - lastFrame > 33){ lastFrame = now; drawScene(now / 1000); }   // ~30fps
   requestAnimationFrame(loop);
 }
 
@@ -542,7 +773,8 @@ function gate(){
         <button type="submit">ENTER</button>
       </form>
       <div class="tries" id="pwmsg"></div>
-    </div>`);
+    </div>`, false, true);
+  fly(0, false);
   const input = document.getElementById("pw");
   input.focus();
   document.getElementById("pwform").onsubmit = e => {
@@ -550,9 +782,9 @@ function gate(){
     if (pwHash("outwit:" + input.value.trim().toLowerCase()) === PW_HASH){
       locked = false;
       try { localStorage.setItem(UNLOCK_KEY, PW_HASH); } catch {}
-      home();
+      SFX.correct(); home();
     } else {
-      input.value = ""; input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake");
+      input.value = ""; input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake"); SFX.wrong();
       document.getElementById("pwmsg").innerHTML = `<span class="nope">WRONG PASSWORD — TRY AGAIN</span>`;
     }
   };
@@ -560,15 +792,18 @@ function gate(){
 let game = null;
 let currentDayKey = keyOf(new Date());
 
-function render(html, playing){
+function render(html, playing, pinTop = playing){
   document.body.classList.toggle("playing", !!playing);
+  document.body.classList.toggle("pin-top", !!pinTop);
+  scrollTo(0, 0);
   app.innerHTML = `<div class="fade">${html}</div>`;
 }
 
 function home(){
   stopTimer(); game = null;
   const p = puzzleFor(new Date()), rec = getRec(p.key), fin = done(rec);
-  setScene(p);
+  setScene(p); fly(0, false);
+  const ride = VEHICLES[p.idx];
   render(`
     <div class="center"><div class="tagline pill">7 QUESTIONS · ${SECONDS}S EACH · TYPE FAST, SCORE BIG</div></div>
     <div class="frame">
@@ -579,6 +814,7 @@ function home(){
           <div class="rival-name">${p.rival.name.toUpperCase()}?</div>
           <div class="quip">${p.rival.quip}</div></div>
       </div>
+      <div class="ride"><span>${ride.emoji || "🎈"}</span>TODAY'S RIDE: ${ride.name.toUpperCase()}</div>
       ${fin ? `<div class="row" style="margin-top:14px"><span class="muted small grow" style="letter-spacing:.15em">YOUR SCORE TODAY</span><span class="cd" style="font-size:24px">${fmtNum(total(rec))}</span></div>` : ""}
     </div>
     <button class="big" id="go">${fin ? "▶ SEE RESULTS ◀" : rec.answers.length ? "▼ RESUME ▼" : "▼ LET'S GO ▼"}</button>
@@ -603,6 +839,7 @@ function archive(){
       <div class="t"><div>${ap.rival.name.toUpperCase()}</div><div class="muted small">#${ap.n} · ${fmtDate(ap.date)}</div></div>
       <div class="r" style="color:${f ? "var(--yellow)" : "var(--cyan)"}">${f ? fmtNum(total(r)) : r.answers.length ? "RESUME ›" : "PLAY ›"}</div></div>`;
   }
+  fly(0, false);
   render(`<div class="frame"><div class="tab">ARCHIVE · LAST ${ARCHIVE_DAYS} DAYS</div>${rows}</div>
           <button class="big" id="back">◀ BACK</button>`);
   document.querySelectorAll(".list-row").forEach(row => row.onclick = () => {
@@ -630,6 +867,8 @@ function statsView(){
 function start(p){
   game = { p, i: getRec(p.key).answers.length, timerId: null };
   setScene(p);
+  fly(total(getRec(p.key)), true, p.rival.target);
+  SFX.start(); setTimeout(SFX.whoosh, 250);
   question();
 }
 
@@ -677,13 +916,14 @@ function question(){
     const r = getRec(p.key);
     r.cur.wrong = [...(r.cur.wrong || []), val];
     setRec(p.key, r);
-    input.value = ""; shake(); showTries(); input.focus();
+    input.value = ""; shake(); showTries(); input.focus(); wobble(); SFX.wrong();
   };
   document.getElementById("pass").onclick = () => submit("");
 
   const bar = document.getElementById("bar"), segs = [...bar.children], secs = document.getElementById("secs");
   const startedAt = rec.cur.startedAt;
   stopTimer();
+  let lastSec = -1;
   const step = () => {
     const left = Math.max(0, SECONDS - (Date.now() - startedAt) / 1000);
     const on = Math.ceil(left / SECONDS * SEGS);
@@ -691,6 +931,8 @@ function question(){
     bar.className = "timebar" + (left <= 10 ? " low" : left <= 20 ? " mid" : "");
     secs.textContent = `${Math.ceil(left)}S LEFT`;
     secs.classList.toggle("low", left <= 10);
+    const sec = Math.ceil(left);
+    if (left <= 10 && left > 0 && sec !== lastSec){ lastSec = sec; SFX.tick(); }
     if (left <= 0) submit(null);
   };
   game.timerId = setInterval(step, 100); step();
@@ -710,6 +952,8 @@ function submit(guess){
   const how = ok ? "correct" : guess === "" ? "passed" : "timeout";
   rec.answers.push({ ok, pts, how, guess: tries.join(", "), time: Math.round(SECONDS - left) });
   delete rec.cur; setRec(p.key, rec);
+  if (ok){ fly(total(rec), true, p.rival.target); boost(); SFX.correct(); setTimeout(SFX.whoosh, 120); }
+  else { wobble(); how === "passed" ? SFX.pass() : SFX.timeup(); }
 
   const last = game.i === QPD - 1;
   render(`
@@ -735,6 +979,9 @@ function results(p){
   stopTimer(); game = null; setScene(p);
   const rec = getRec(p.key), score = total(rec), right = rec.answers.filter(a => a.ok).length;
   const max = QPD * MAX_PTS, rival = p.rival.target, isToday = p.key === keyOf(new Date());
+  fly(score, true, rival); celebrateIf(score > rival);
+  setTimeout(() => SFX.final(score > rival), 900);
+  const bell = bellCurve(p, score);
   const rname = p.rival.name.replace(/^(A|An) /, "");
   const line = score > rival ? `You outwitted ${p.rival.name.toLowerCase()}.` : score === rival ? `Dead even with ${p.rival.name.toLowerCase()}.` : `${p.rival.name} scored higher today.`;
 
@@ -749,6 +996,7 @@ function results(p){
         <div class="vsrow"><span class="n">YOU</span><div class="bar"><i id="b1" style="background:var(--pink)"></i></div><span class="v">${fmtNum(score)}</span></div>
         <div class="vsrow"><span class="n">${p.rival.emoji} ${rname.toUpperCase()}</span><div class="bar"><i id="b2" style="background:var(--cyan)"></i></div><span class="v">${fmtNum(rival)}</span></div>
       </div>
+      ${bell.html}
     </div>
     <button class="big pink" id="share">SHARE SCORE</button>
     <div class="row">
@@ -762,10 +1010,11 @@ function results(p){
     </div>`);
 
   const el = document.getElementById("final"), t0 = performance.now();
-  const anim = now => { const k = Math.min(1, (now - t0) / 1200), e = 1 - Math.pow(1 - k, 3);
-    el.textContent = fmtNum(Math.round(score * e)); if (k < 1) requestAnimationFrame(anim); };
-  requestAnimationFrame(anim);
+  const countUp = now => { const k = Math.min(1, (now - t0) / 1200), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmtNum(Math.round(score * e)); if (k < 1) requestAnimationFrame(countUp); };
+  requestAnimationFrame(countUp);
   setTimeout(() => {
+    bell.grow();
     document.getElementById("b1").style.width = (score / max * 100) + "%";
     document.getElementById("b2").style.width = (rival / max * 100) + "%";
   }, 60);
@@ -781,6 +1030,75 @@ function results(p){
 }
 
 function toast(msg){ const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+
+/* ===================== SOUND (8-bit, generated in code — no audio files) ===================== */
+let actx = null, muted = false;
+try { muted = localStorage.getItem("outwit-muted") === "1"; } catch {}
+function beep(freq, dur, type = "square", vol = .08, slideTo = null, delay = 0){
+  if (muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const t0 = actx.currentTime + delay, o = actx.createOscillator(), gn = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    gn.gain.setValueAtTime(vol, t0); gn.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    o.connect(gn).connect(actx.destination); o.start(t0); o.stop(t0 + dur + .02);
+  } catch {}
+}
+const SFX = {
+  click:   () => beep(660, .05, "square", .035),
+  start:   () => [392, 523, 659, 784].forEach((f, i) => beep(f, .12, "square", .06, null, i * .09)),
+  whoosh:  () => beep(180, .55, "triangle", .05, 900),
+  correct: () => { beep(784, .08, "square", .07); beep(1175, .18, "square", .07, null, .08); },
+  wrong:   () => beep(220, .2, "sawtooth", .05, 130),
+  pass:    () => beep(440, .14, "triangle", .06, 300),
+  tick:    () => beep(1200, .035, "square", .03),
+  timeup:  () => beep(330, .5, "triangle", .09, 100),
+  final:   win => (win ? [523, 659, 784, 1047, 1319] : [392, 349, 330, 262]).forEach((f, i) => beep(f, .2, "square", .06, null, i * .13)),
+};
+const muteBtn = document.getElementById("mute");
+const showMute = () => muteBtn.textContent = muted ? "🔇" : "🔊";
+showMute();
+muteBtn.onclick = () => { muted = !muted; try { localStorage.setItem("outwit-muted", muted ? "1" : "0"); } catch {} showMute(); SFX.click(); };
+document.addEventListener("click", e => { if (e.target.closest(".big, .mini, .list-row")) SFX.click(); });
+
+/* ===================== BELL CURVE (estimated) =====================
+   There's no server collecting everyone's scores yet, so this is an ESTIMATE of how
+   players score based on the day's difficulty (tougher rivals = lower average).
+   Swap in real scores once there's a leaderboard backend. */
+function erf(x){ const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + .3275911 * x);
+  return s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - .284496736) * t + .254829592) * t * Math.exp(-x * x)); }
+function bellCurve(p, score){
+  const max = QPD * MAX_PTS, sd = 1300;
+  const mu = Math.max(1800, Math.min(5200, 3800 + (3500 - p.rival.target) * .35));
+  const pct = Math.round(50 * (1 + erf((score - mu) / (sd * Math.SQRT2))));
+  const N = 35, w = max / N, pdf = x => Math.exp(-((x - mu) ** 2) / (2 * sd * sd));
+  const you = Math.min(N - 1, Math.floor(score / w)), riv = Math.min(N - 1, Math.floor(p.rival.target / w));
+  const bars = Array.from({length:N}, (_, i) => `<i class="${i === you ? "you" : i < you ? "below" : ""}" data-h="${Math.max(3, Math.round(pdf((i + .5) * w) * 100))}"></i>`).join("");
+  const label = score <= 0 ? "EVERYONE STARTS SOMEWHERE" : pct >= 50 ? `TOP ${Math.max(1, 100 - pct)}%` : `BETTER THAN ${pct}%`;
+  return {
+    html: `<div class="bellbox">
+        <div class="bell-head"><span>HOW YOU STACK UP</span><b>${label}</b></div>
+        <div class="bell" id="bell">${bars}
+          <div class="mark you" style="left:${(you + .5) / N * 100}%">▼ YOU</div>
+          <div class="mark riv" style="left:${(riv + .5) / N * 100}%">${p.rival.emoji}</div></div>
+        <div class="bell-axis"><span>0</span><span>${fmtNum(max)}</span></div>
+        <div class="muted" style="font-size:10px; margin-top:6px">Estimated from today's difficulty</div>
+      </div>`,
+    grow(){ document.querySelectorAll("#bell i").forEach((b, i) => setTimeout(() => b.style.height = b.dataset.h + "%", i * 18)); }
+  };
+}
+
+/* ===================== PHONE KEYBOARD =====================
+   When the on-screen keyboard opens, keep the text box in view. */
+document.addEventListener("focusin", e => {
+  if (e.target.tagName === "INPUT" && innerWidth <= 600) setTimeout(() => e.target.scrollIntoView({block:"center", behavior:"smooth"}), 300);
+});
+if (window.visualViewport) visualViewport.addEventListener("resize", () => {
+  const a = document.activeElement;
+  if (a && a.tagName === "INPUT") a.scrollIntoView({block:"center", behavior:"smooth"});
+});
 
 /* ===================== MIDNIGHT REFRESH ===================== */
 function tick(){

@@ -164,6 +164,41 @@
     body.pin-top main{margin-top:8px}
     .mute{top:8px; right:8px; width:36px; height:36px; font-size:15px}
   }
+  .acct{position:fixed; top:12px; left:12px; z-index:5; width:42px; height:42px; font-size:18px; background:rgba(10,22,46,.85); border:1px solid rgba(79,227,255,.5)}
+  .acct.on::after{content:""; position:absolute; top:5px; right:5px; width:8px; height:8px; background:var(--green); box-shadow:0 0 6px var(--green)}
+
+  .stack label{display:block; font-family:var(--px); font-size:11px; letter-spacing:.15em; color:var(--muted); margin-bottom:14px}
+  .stack input{display:block; width:100%; margin-top:6px; font-family:var(--mono); font-size:17px; color:#fff; background:#06101f; border:2px solid rgba(79,227,255,.5); padding:12px; outline:none; border-radius:0}
+  .stack input:focus{border-color:var(--cyan); box-shadow:0 0 14px rgba(79,227,255,.3)}
+  .stack .big{margin-top:6px}
+  .big:disabled{opacity:.6; cursor:wait}
+  .links{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:14px}
+  .link{font-family:var(--px); font-size:11px; letter-spacing:.12em; color:var(--cyan); text-decoration:underline; padding:4px 0}
+  .err{color:var(--red); font-size:13px; min-height:18px; margin:-4px 0 6px}
+  .note{background:rgba(77,255,154,.1); border:1px solid rgba(77,255,154,.45); color:#c9ffe2; padding:10px 12px; font-size:13px; margin-bottom:14px}
+
+  .cards{display:grid; grid-template-columns:repeat(5,1fr); gap:8px}
+  .card{background:linear-gradient(180deg,#1b3566,#0f1f3d); border:2px solid var(--yellow); padding:10px 4px 8px; text-align:center; box-shadow:0 0 12px rgba(255,216,79,.25)}
+  .card .ce{font-size:30px; line-height:1.1}
+  .card .cn{font-family:var(--px); font-size:10px; letter-spacing:.04em; margin-top:5px; line-height:1.2; min-height:24px}
+  .card .cs{font-family:var(--px); font-size:9px; color:var(--yellow); margin-top:4px}
+  .card.locked{border-color:rgba(255,255,255,.15); background:rgba(255,255,255,.04); box-shadow:none}
+  .card.locked .ce{filter:grayscale(1); opacity:.5} .card.locked .cs{color:var(--muted)}
+  .badges{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .badge{display:flex; gap:10px; align-items:center; padding:9px 10px; border:1px solid rgba(79,227,255,.35); background:rgba(79,227,255,.06); text-align:left}
+  .badge .bi{font-size:26px; line-height:1}
+  .badge .bn{font-family:var(--px); font-size:11px; letter-spacing:.08em}
+  .badge .bdesc{font-size:11px; color:var(--muted); margin-top:2px}
+  .badge.locked{opacity:.45}
+  .unlocks .badge{animation:pop .5s cubic-bezier(.2,1.7,.4,1) both; border-color:var(--yellow); background:rgba(255,216,79,.08)}
+  .unlocks .badge + .badge{margin-top:8px}
+  .unlocks .badge:nth-child(3){animation-delay:.15s} .unlocks .badge:nth-child(4){animation-delay:.3s} .unlocks .badge:nth-child(5){animation-delay:.45s}
+
+  @media (max-width:600px){
+    .cards{grid-template-columns:repeat(3,1fr)}
+    .badges{grid-template-columns:1fr}
+    .acct{top:8px; left:8px; width:36px; height:36px; font-size:15px}
+  }
   .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--cyan); color:#04131f; font-family:var(--px); letter-spacing:.1em; padding:10px 16px; opacity:0; transition:opacity .2s; pointer-events:none}
   .toast.show{opacity:1}
   .fade{animation:fade .3s steps(6)}
@@ -182,6 +217,8 @@
 </div>
 <div class="toast" id="toast"></div>
 <button class="mute" id="mute" aria-label="Toggle sound"></button>
+<button class="acct" id="acct" aria-label="Account">👤</button>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
 /* ===================== RIVALS + QUESTIONS =====================
@@ -431,10 +468,71 @@ function isCorrect(guess, accepted){
   });
 }
 
+/* ===================== ACCOUNTS (Supabase) =====================
+   Paste your Supabase project's URL and anon (public) key here to switch on
+   accounts — see README.md. Leave them empty and the game works without accounts. */
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
+
+let sb = null, user = null, syncTimer = null, syncState = "";
+const accountsOn = () => !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
+const siteUrl = () => location.origin + location.pathname;
+
+function initAccounts(){
+  updateAcctBtn();
+  if (!accountsOn()) return;
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb.auth.onAuthStateChange((event, session) => {
+    const before = user;
+    user = session ? session.user : null;
+    updateAcctBtn();
+    if (event === "PASSWORD_RECOVERY") { setTimeout(resetView, 0); return; }
+    if (user && (!before || before.id !== user.id)) setTimeout(pullAndMerge, 0);
+  });
+}
+
+/* Combine this device's games with the account's games (keeps the most complete record per day) */
+function mergeStores(a, b){
+  const out = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])){
+    const A = a[k], B = b[k];
+    if (!A || !B){ out[k] = A || B; continue; }
+    const dA = A.answers.length === QPD, dB = B.answers.length === QPD;
+    out[k] = dA !== dB ? (dA ? A : B) : (B.answers.length > A.answers.length ? B : A);
+  }
+  return out;
+}
+
+async function pullAndMerge(){
+  if (!sb || !user) return;
+  syncState = "syncing";
+  try {
+    const { data, error } = await sb.from("progress").select("data").eq("user_id", user.id).maybeSingle();
+    if (error) throw error;
+    saveLocal(mergeStores(load(), (data && data.data) || {}));
+    await pushNow();
+  } catch (e) { syncState = "error"; console.warn("Sync failed:", e); }
+  // refresh whatever is on screen so merged progress shows up
+  if (!game && !locked){
+    if (document.getElementById("go")) home();
+    else if (document.getElementById("logout")) accountView();
+  }
+}
+async function pushNow(){
+  if (!sb || !user) return;
+  try {
+    const { error } = await sb.from("progress").upsert({ user_id: user.id, data: load(), updated_at: new Date().toISOString() });
+    if (error) throw error;
+    syncState = "synced";
+  } catch (e) { syncState = "error"; console.warn("Sync failed:", e); }
+}
+function queuePush(){ if (!sb || !user) return; clearTimeout(syncTimer); syncTimer = setTimeout(pushNow, 1200); }
+
 /* ===================== STORAGE ===================== */
 let memStore = {};
 const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return JSON.parse(JSON.stringify(memStore)); } };
-const save = s => { memStore = s; try { localStorage.setItem(STORE, JSON.stringify(s)); } catch {} };
+const saveLocal = s => { memStore = s; try { localStorage.setItem(STORE, JSON.stringify(s)); } catch {} };
+const save = s => { saveLocal(s); queuePush(); };   // also backs up to your account when logged in
 const getRec = key => load()[key] || { answers: [] };
 const setRec = (key, rec) => { const s = load(); s[key] = rec; save(s); };
 const total = rec => rec.answers.reduce((t, a) => t + a.pts, 0);
@@ -823,11 +921,13 @@ function home(){
       <span class="grow"></span>
       <button class="mini" id="arch">ARCHIVE ↺</button>
       <button class="mini" id="stat">STATS ★</button>
+      <button class="mini" id="troph">TROPHIES 🏆</button>
     </div>
     <div class="center" style="margin-top:14px"><span class="pill">NEXT RIVAL IN <span class="cd" id="cd"></span></span></div>`);
   document.getElementById("go").onclick = () => fin ? results(p) : start(p);
   document.getElementById("arch").onclick = archive;
   document.getElementById("stat").onclick = statsView;
+  document.getElementById("troph").onclick = trophies;
   tick();
 }
 
@@ -950,7 +1050,8 @@ function submit(guess){
   const pts = ok ? Math.round(BASE_PTS + (MAX_PTS - BASE_PTS) * left / SECONDS) : 0;
   const tries = (rec.cur && rec.cur.wrong) || [];
   const how = ok ? "correct" : guess === "" ? "passed" : "timeout";
-  rec.answers.push({ ok, pts, how, guess: tries.join(", "), time: Math.round(SECONDS - left) });
+  rec.answers.push({ ok, pts, how, guess: tries.join(", "), wrong: tries.length, time: Math.round(SECONDS - left) });
+  if (done(rec) && p.key !== keyOf(new Date())) rec.archive = true;
   delete rec.cur; setRec(p.key, rec);
   if (ok){ fly(total(rec), true, p.rival.target); boost(); SFX.correct(); setTimeout(SFX.whoosh, 120); }
   else { wobble(); how === "passed" ? SFX.pass() : SFX.timeup(); }
@@ -982,6 +1083,8 @@ function results(p){
   fly(score, true, rival); celebrateIf(score > rival);
   setTimeout(() => SFX.final(score > rival), 900);
   const bell = bellCurve(p, score);
+  const fresh = newUnlocks();
+  if (fresh.length) setTimeout(SFX.unlock, 2100);
   const rname = p.rival.name.replace(/^(A|An) /, "");
   const line = score > rival ? `You outwitted ${p.rival.name.toLowerCase()}.` : score === rival ? `Dead even with ${p.rival.name.toLowerCase()}.` : `${p.rival.name} scored higher today.`;
 
@@ -998,6 +1101,9 @@ function results(p){
       </div>
       ${bell.html}
     </div>
+    ${fresh.length ? `<div class="frame unlocks"><div class="tab pink">NEW UNLOCKS!</div>
+      ${fresh.map(u => `<div class="badge"><div class="bi">${u.icon}</div><div><div class="bn">${u.name.toUpperCase()}</div><div class="bdesc">${u.desc}</div></div></div>`).join("")}
+      <button class="link" id="seeTrophies" style="margin-top:10px">SEE TROPHY ROOM ›</button></div>` : ""}
     <button class="big pink" id="share">SHARE SCORE</button>
     <div class="row">
       <button class="mini" id="back">◀ HOME</button><span class="grow"></span>
@@ -1020,6 +1126,7 @@ function results(p){
   }, 60);
 
   document.getElementById("back").onclick = home;
+  const seeT = document.getElementById("seeTrophies"); if (seeT) seeT.onclick = trophies;
   document.getElementById("share").onclick = () => {
     const grid = rec.answers.map(a => !a.ok ? "🟥" : a.pts >= 700 ? "🟩" : "🟨").join("");
     const txt = `OUTWIT #${p.n} ${p.rival.emoji} vs ${p.rival.name}\n${fmtNum(score)} pts (${right}/${QPD}) — ${rankFor(score)}\n${grid}`;
@@ -1030,6 +1137,260 @@ function results(p){
 }
 
 function toast(msg){ const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+
+/* ===================== TROPHY ROOM =====================
+   Rival cards: beat a rival's score to collect their card (20 to collect).
+   Accolades: badges for milestones. Both are worked out from your saved games,
+   so they follow you to any device once you're logged in. */
+const BADGES = [
+  {id:"first",   icon:"🎈", name:"First Flight",          desc:"Finish your first game"},
+  {id:"win",     icon:"🧠", name:"Outwitted!",            desc:"Beat a rival's score"},
+  {id:"space",   icon:"🌌", name:"Space Cadet",           desc:"Score 6,000+ in one day"},
+  {id:"perfect", icon:"💯", name:"Flawless",              desc:"Get all 7 right"},
+  {id:"sharp",   icon:"🎯", name:"Sharpshooter",          desc:"7/7 without a single wrong guess"},
+  {id:"speed",   icon:"⚡", name:"Speed Demon",           desc:"Answer right within 3 seconds"},
+  {id:"clutch",  icon:"⏱️", name:"Clutch",                desc:"Answer right with 3 seconds or less left"},
+  {id:"grit",    icon:"🪨", name:"Never Give Up",         desc:"Get it right after 3+ wrong guesses"},
+  {id:"streak3", icon:"🔥", name:"On a Roll",             desc:"Play 3 days in a row"},
+  {id:"streak7", icon:"📅", name:"Week Warrior",          desc:"Play 7 days in a row"},
+  {id:"travel",  icon:"🕰️", name:"Time Traveler",         desc:"Finish 5 past days from the archive"},
+  {id:"half",    icon:"🃏", name:"Half the Deck",         desc:"Collect 10 rival cards"},
+  {id:"all",     icon:"👑", name:"Smarter Than Everyone", desc:"Collect all 20 rival cards"},
+];
+const wrongCount = a => a.wrong != null ? a.wrong : a.guess ? a.guess.split(", ").length : 0;
+const shortName = r => r.name.replace(/^(A|An) /, "");
+
+function awards(){
+  const s = load(), cards = {}, got = new Set(), days = [];
+  let archived = 0;
+  for (const k in s){
+    const rec = s[k]; if (!rec || !done(rec)) continue;
+    const [y, m, d] = k.split("-").map(Number), p = puzzleFor(new Date(y, m - 1, d));
+    const sc = total(rec), right = rec.answers.filter(a => a.ok).length;
+    days.push(p.n); got.add("first");
+    const c = cards[p.idx] = cards[p.idx] || { wins:0, best:0 };
+    c.best = Math.max(c.best, sc);
+    if (sc > p.rival.target){ c.wins++; got.add("win"); }
+    if (sc >= 6000) got.add("space");
+    if (right === QPD){ got.add("perfect"); if (rec.answers.every(a => !wrongCount(a))) got.add("sharp"); }
+    for (const a of rec.answers){
+      if (!a.ok) continue;
+      if (a.time <= 3) got.add("speed");
+      if (SECONDS - a.time <= 3) got.add("clutch");
+      if (wrongCount(a) >= 3) got.add("grit");
+    }
+    if (rec.archive) archived++;
+  }
+  // longest run of consecutive days played
+  days.sort((a, b) => a - b);
+  let run = 0, best = 0;
+  days.forEach((n, i) => { run = i && n === days[i - 1] + 1 ? run + 1 : 1; best = Math.max(best, run); });
+  if (best >= 3) got.add("streak3");
+  if (best >= 7) got.add("streak7");
+  if (archived >= 5) got.add("travel");
+  const owned = Object.keys(cards).filter(i => cards[i].wins).map(Number);
+  if (owned.length >= 10) got.add("half");
+  if (owned.length >= RIVALS.length) got.add("all");
+  return { cards, owned, got };
+}
+
+/* What did this game unlock that the player hasn't seen yet? */
+let memSeen = null;   // fallback if the browser blocks storage
+function newUnlocks(){
+  const aw = awards();
+  let seen = null;
+  try { seen = JSON.parse(localStorage.getItem("outwit-seen")); } catch {}
+  seen = seen || memSeen || { b:[], c:[] };
+  const nc = aw.owned.filter(i => !seen.c.includes(i));
+  const nb = BADGES.filter(b => aw.got.has(b.id) && !seen.b.includes(b.id));
+  memSeen = { b:[...aw.got], c:aw.owned };
+  try { localStorage.setItem("outwit-seen", JSON.stringify(memSeen)); } catch {}
+  return [...nc.map(i => ({ icon:RIVALS[i].emoji, name:`${shortName(RIVALS[i])} card`, desc:"Added to your rival cards" })), ...nb];
+}
+
+function trophies(){
+  stopTimer(); game = null; fly(0, false);
+  const aw = awards();
+  const cards = RIVALS.map((r, i) => {
+    const c = aw.cards[i], have = c && c.wins;
+    return `<div class="card ${have ? "" : "locked"}">
+      <div class="ce">${have ? r.emoji : "❔"}</div>
+      <div class="cn">${have ? shortName(r).toUpperCase() : "???"}</div>
+      <div class="cs">${have ? `BEST ${fmtNum(c.best)}${c.wins > 1 ? ` · ×${c.wins}` : ""}` : `BEAT ${fmtNum(r.target)}`}</div></div>`;
+  }).join("");
+  const badges = BADGES.map(b => { const has = aw.got.has(b.id);
+    return `<div class="badge ${has ? "" : "locked"}"><div class="bi">${has ? b.icon : "🔒"}</div>
+      <div><div class="bn">${b.name.toUpperCase()}</div><div class="bdesc">${b.desc}</div></div></div>`; }).join("");
+  render(`
+    <div class="frame"><div class="tab">RIVAL CARDS · ${aw.owned.length}/${RIVALS.length}</div>
+      <div class="muted small" style="margin-bottom:10px">Beat a rival's score to add their card. Rivals come back every ${RIVALS.length} days, and past days are in the archive.</div>
+      <div class="cards">${cards}</div></div>
+    <div class="frame"><div class="tab pink">ACCOLADES · ${aw.got.size}/${BADGES.length}</div><div class="badges">${badges}</div></div>
+    <button class="big" id="back">◀ BACK</button>`);
+  document.getElementById("back").onclick = () => locked ? gate() : home();
+}
+
+/* ===================== ACCOUNT SCREENS ===================== */
+const acctBtn = document.getElementById("acct");
+function updateAcctBtn(){ acctBtn.classList.toggle("on", !!user); acctBtn.title = user ? "Your account" : "Log in"; }
+acctBtn.onclick = () => {
+  if (locked) return toast("ENTER THE PASSWORD FIRST");
+  user ? accountView() : loginView();
+};
+const fieldVal = id => document.getElementById(id).value.trim();
+const rawVal = id => document.getElementById(id).value;
+function goBack(){ document.getElementById("back").onclick = () => locked ? gate() : home(); }
+function leaveGame(){ stopTimer(); game = null; fly(0, false); }
+
+/* Runs an async form action with a busy button and friendly errors */
+function onForm(fn){
+  const f = document.getElementById("f"), sub = document.getElementById("sub"), err = document.getElementById("err");
+  f.onsubmit = async e => {
+    e.preventDefault();
+    err.textContent = ""; sub.disabled = true;
+    const label = sub.textContent; sub.textContent = "· · ·";
+    try { await fn(); }
+    catch (x){ if (document.body.contains(err)) err.textContent = (x && x.message) || "Something went wrong. Try again."; SFX.wrong(); }
+    if (document.body.contains(sub)){ sub.disabled = false; sub.textContent = label; }
+  };
+}
+
+function setupNeeded(){
+  leaveGame();
+  render(`<div class="frame center"><div class="tab">ACCOUNTS</div>
+      <div style="font-size:44px">🛠️</div>
+      <div class="rival-name">COMING SOON</div>
+      <p class="quip">Accounts aren't switched on yet. Your games and trophies are saved on this device in the meantime.</p>
+    </div><button class="big" id="back">◀ BACK</button>`, false, true);
+  goBack();
+}
+
+function loginView(msg = ""){
+  if (!accountsOn()) return setupNeeded();
+  leaveGame();
+  render(`<div class="frame"><div class="tab">LOG IN</div>
+      ${msg ? `<div class="note">${msg}</div>` : `<p class="quip" style="margin-top:0">Save your scores, streaks and trophies, and play on any device.</p>`}
+      <form class="stack" id="f">
+        <label>EMAIL<input id="email" type="email" autocomplete="email" autocapitalize="off" required></label>
+        <label>PASSWORD<input id="pass" type="password" autocomplete="current-password" required></label>
+        <div class="err" id="err"></div>
+        <button class="big" type="submit" id="sub">LOG IN</button>
+      </form>
+      <div class="links"><button class="link" id="toSignup">CREATE ACCOUNT</button><button class="link" id="toForgot">FORGOT PASSWORD?</button></div>
+    </div><button class="mini" id="back">◀ BACK</button>`, false, true);
+  goBack();
+  document.getElementById("toSignup").onclick = signupView;
+  document.getElementById("toForgot").onclick = forgotView;
+  onForm(async () => {
+    const { error } = await sb.auth.signInWithPassword({ email: fieldVal("email"), password: rawVal("pass") });
+    if (error) throw error;
+    SFX.correct(); toast("WELCOME BACK!"); accountView();
+  });
+}
+
+function signupView(){
+  if (!accountsOn()) return setupNeeded();
+  leaveGame();
+  render(`<div class="frame"><div class="tab pink">CREATE ACCOUNT</div>
+      <form class="stack" id="f">
+        <label>PLAYER NAME<input id="name" maxlength="20" autocomplete="nickname" required></label>
+        <label>EMAIL<input id="email" type="email" autocomplete="email" autocapitalize="off" required></label>
+        <label>PASSWORD <span class="muted">(6+ characters)</span><input id="pass" type="password" autocomplete="new-password" required></label>
+        <label>CONFIRM PASSWORD<input id="pass2" type="password" autocomplete="new-password" required></label>
+        <div class="err" id="err"></div>
+        <button class="big pink" type="submit" id="sub">SIGN UP</button>
+      </form>
+      <div class="links"><button class="link" id="toLogin">I HAVE AN ACCOUNT</button></div>
+    </div><button class="mini" id="back">◀ BACK</button>`, false, true);
+  goBack();
+  document.getElementById("toLogin").onclick = () => loginView();
+  onForm(async () => {
+    const pw = rawVal("pass");
+    if (pw.length < 6) throw new Error("Password needs at least 6 characters.");
+    if (pw !== rawVal("pass2")) throw new Error("Those passwords don't match.");
+    const { data, error } = await sb.auth.signUp({ email: fieldVal("email"), password: pw,
+      options: { data: { name: fieldVal("name") }, emailRedirectTo: siteUrl() } });
+    if (error) throw error;
+    if (data.session){ SFX.correct(); toast("ACCOUNT CREATED!"); accountView(); }
+    else loginView("Almost there! We emailed you a confirmation link. Click it, then log in here.");
+  });
+}
+
+function forgotView(){
+  if (!accountsOn()) return setupNeeded();
+  leaveGame();
+  render(`<div class="frame"><div class="tab">RESET PASSWORD</div>
+      <p class="quip" style="margin-top:0">Enter your email and we'll send you a link to set a new password.</p>
+      <form class="stack" id="f">
+        <label>EMAIL<input id="email" type="email" autocomplete="email" autocapitalize="off" required></label>
+        <div class="err" id="err"></div>
+        <button class="big" type="submit" id="sub">SEND RESET LINK</button>
+      </form>
+      <div class="links"><button class="link" id="toLogin">BACK TO LOG IN</button></div>
+    </div><button class="mini" id="back">◀ BACK</button>`, false, true);
+  goBack();
+  document.getElementById("toLogin").onclick = () => loginView();
+  onForm(async () => {
+    const { error } = await sb.auth.resetPasswordForEmail(fieldVal("email"), { redirectTo: siteUrl() });
+    if (error) throw error;
+    loginView("If that email has an account, a reset link is on its way. Open it, and you'll be able to pick a new password.");
+  });
+}
+
+/* Shown when someone opens the reset link from their email, or chooses "change password" */
+function resetView(){
+  if (!accountsOn()) return setupNeeded();
+  leaveGame();
+  render(`<div class="frame"><div class="tab pink">NEW PASSWORD</div>
+      <form class="stack" id="f">
+        <label>NEW PASSWORD <span class="muted">(6+ characters)</span><input id="pass" type="password" autocomplete="new-password" required></label>
+        <label>CONFIRM NEW PASSWORD<input id="pass2" type="password" autocomplete="new-password" required></label>
+        <div class="err" id="err"></div>
+        <button class="big pink" type="submit" id="sub">SAVE PASSWORD</button>
+      </form>
+    </div><button class="mini" id="back">◀ BACK</button>`, false, true);
+  goBack();
+  onForm(async () => {
+    const pw = rawVal("pass");
+    if (pw.length < 6) throw new Error("Password needs at least 6 characters.");
+    if (pw !== rawVal("pass2")) throw new Error("Those passwords don't match.");
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) throw error;
+    SFX.correct(); toast("PASSWORD UPDATED"); accountView();
+  });
+}
+
+function accountView(){
+  if (!accountsOn()) return setupNeeded();
+  if (!user) return loginView();
+  leaveGame();
+  const name = (user.user_metadata && user.user_metadata.name) || user.email.split("@")[0];
+  const st = stats(), aw = awards();
+  const sync = { syncing:"☁️ SYNCING…", synced:"☁️ PROGRESS SAVED TO YOUR ACCOUNT", error:"⚠️ COULDN'T SYNC — WILL RETRY" }[syncState] || "☁️ CONNECTED";
+  render(`<div class="frame center"><div class="tab">YOUR ACCOUNT</div>
+      <div style="font-size:44px">👤</div>
+      <div class="rival-name">${esc(name).toUpperCase()}</div>
+      <div class="muted small" style="margin-top:4px">${esc(user.email)}</div>
+      <div class="pill" style="margin-top:12px; font-size:11px">${sync}</div>
+      <div class="stats" style="margin-top:16px">
+        <div><b>${st.played}</b><span>PLAYED</span></div>
+        <div><b>${fmtNum(st.best)}</b><span>BEST</span></div>
+        <div><b>${aw.owned.length}</b><span>CARDS</span></div>
+        <div><b>${aw.got.size}</b><span>BADGES</span></div>
+      </div>
+    </div>
+    <button class="big" id="troph">TROPHY ROOM 🏆</button>
+    <div class="row"><button class="mini" id="back">◀ BACK</button><span class="grow"></span>
+      <button class="mini" id="chpw">CHANGE PASSWORD</button><button class="mini" id="logout">LOG OUT</button></div>`);
+  goBack();
+  document.getElementById("troph").onclick = trophies;
+  document.getElementById("chpw").onclick = resetView;
+  document.getElementById("logout").onclick = async () => {
+    await pushNow();
+    await sb.auth.signOut();
+    toast("LOGGED OUT"); home();
+  };
+}
 
 /* ===================== SOUND (8-bit, generated in code — no audio files) ===================== */
 let actx = null, muted = false;
@@ -1055,6 +1416,7 @@ const SFX = {
   pass:    () => beep(440, .14, "triangle", .06, 300),
   tick:    () => beep(1200, .035, "square", .03),
   timeup:  () => beep(330, .5, "triangle", .09, 100),
+  unlock:  () => [659, 880, 1175, 1568].forEach((f, i) => beep(f, .1, "square", .06, null, i * .07)),
   final:   win => (win ? [523, 659, 784, 1047, 1319] : [392, 349, 330, 262]).forEach((f, i) => beep(f, .2, "square", .06, null, i * .13)),
 };
 const muteBtn = document.getElementById("mute");
@@ -1111,6 +1473,7 @@ function tick(){
 setInterval(tick, 1000);
 
 sizeCanvas();
+initAccounts();
 locked ? gate() : home();
 requestAnimationFrame(loop);
 </script>

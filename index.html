@@ -519,7 +519,44 @@ function loop(now){
 
 /* ===================== UI ===================== */
 const app = document.getElementById("app");
-document.getElementById("logo").onclick = () => { if (!game) home(); };
+document.getElementById("logo").onclick = () => { if (!game && !locked) home(); };
+
+/* ===================== PASSWORD GATE =====================
+   The password is stored only as a hash. To change it, run in the browser console:
+   pwHash("outwit:yournewpassword")  and paste the result into PW_HASH. */
+const PW_HASH = "1046iwd", UNLOCK_KEY = "outwit-unlocked";
+const pwHash = s => { let x = 2166136261; for (const c of s){ x ^= c.charCodeAt(0); x = Math.imul(x, 16777619) >>> 0; } return x.toString(36); };
+let locked = true;
+try { locked = localStorage.getItem(UNLOCK_KEY) !== PW_HASH; } catch {}
+
+function gate(){
+  setScene(puzzleFor(new Date()));
+  render(`
+    <div class="frame center">
+      <div class="tab pink">MEMBERS ONLY</div>
+      <div style="font-size:44px; margin:4px 0 6px">🔒</div>
+      <div class="rival-name">ENTER PASSWORD</div>
+      <div class="quip" style="margin-bottom:16px">Say the secret word to start outwitting.</div>
+      <form class="answer" id="pwform" autocomplete="off">
+        <input id="pw" type="password" placeholder="PASSWORD" autocapitalize="off" spellcheck="false" />
+        <button type="submit">ENTER</button>
+      </form>
+      <div class="tries" id="pwmsg"></div>
+    </div>`);
+  const input = document.getElementById("pw");
+  input.focus();
+  document.getElementById("pwform").onsubmit = e => {
+    e.preventDefault();
+    if (pwHash("outwit:" + input.value.trim().toLowerCase()) === PW_HASH){
+      locked = false;
+      try { localStorage.setItem(UNLOCK_KEY, PW_HASH); } catch {}
+      home();
+    } else {
+      input.value = ""; input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake");
+      document.getElementById("pwmsg").innerHTML = `<span class="nope">WRONG PASSWORD — TRY AGAIN</span>`;
+    }
+  };
+}
 let game = null;
 let currentDayKey = keyOf(new Date());
 
@@ -751,12 +788,12 @@ function tick(){
   if (cd){ const ms = addDays(now, 1) - now;
     cd.textContent = `${pad(Math.floor(ms / 3.6e6))}:${pad(Math.floor(ms % 3.6e6 / 6e4))}:${pad(Math.floor(ms % 6e4 / 1000))}`; }
   const k = keyOf(now);
-  if (k !== currentDayKey){ currentDayKey = k; if (!game) home(); }   // new rival + new scene at 12:00 AM
+  if (k !== currentDayKey){ currentDayKey = k; if (!game && !locked) home(); }   // new rival + new scene at 12:00 AM
 }
 setInterval(tick, 1000);
 
 sizeCanvas();
-home();
+locked ? gate() : home();
 requestAnimationFrame(loop);
 </script>
 </body>
